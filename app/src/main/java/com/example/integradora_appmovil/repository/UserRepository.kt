@@ -4,18 +4,14 @@ import com.example.integradora_appmovil.model.User
 import kotlinx.coroutines.delay
 
 class UserRepository {
-    // Usamos un companion object para simular una base de datos en memoria
-    // que persista durante la ejecución de la app
     companion object {
         private val registeredUsers = mutableListOf<Triple<String, String, String>>(
-            // Usuario por defecto: username, password, email
+            // Usuario, password, email
             Triple("admin", "123456", "@.edu.mx")
         )
-
         fun addUser(username: String, password: String, email: String) {
             registeredUsers.add(Triple(username, password, email))
         }
-
         fun findUser(username: String, password: String): Boolean {
             return registeredUsers.any { it.first == username && it.second == password }
         }

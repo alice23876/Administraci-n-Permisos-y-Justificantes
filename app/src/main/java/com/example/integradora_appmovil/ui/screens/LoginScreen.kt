@@ -46,7 +46,7 @@ fun LoginScreen(
     onRegisterClick: () -> Unit,
     onForgotPasswordClick: () -> Unit
 ){
-    // Obtenemos los estados desde el ViewModel
+    // Estados del viewModel
     val user = viewModel.user
     val password = viewModel.password
     val isUserInvalid = viewModel.isUserInvalid
@@ -194,7 +194,7 @@ fun LoginScreen(
             Text("¿Olvidaste tu contraseña?", color = Color.LightGray.copy(alpha = 0.6f), fontSize = 12.sp)
         }
 
-        // Mostrar mensaje de error general del ViewModel
+        // Mostrar mensaje de error general
         if (errorMessage.isNotEmpty()) {
             Text(
                 text = errorMessage,

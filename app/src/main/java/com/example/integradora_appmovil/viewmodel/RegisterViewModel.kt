@@ -12,7 +12,7 @@ class RegisterViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
 
-    // Estados de los campos
+    // Estados
     var fullName by mutableStateOf("")
     var email by mutableStateOf("")
     var password by mutableStateOf("")
@@ -20,21 +20,19 @@ class RegisterViewModel(
     var isRegistered by mutableStateOf(false)
     var isLoading by mutableStateOf(false)
 
-    // --- VALIDACIONES ---
-
-    // 0. Validación de Nombre (que no esté vacío)
+    // Validación de Nombre (no debe estar vacío)
     val isNameValid: Boolean
         get() = fullName.isNotBlank()
 
-    // 1. Validación de Correo Institucional
-    // ACTUALIZACIÓN: Ahora acepta tanto @institucion.edu.mx como @utez.edu.mx
+    // Validación de Correo Institucional
+    // Solo debe de acpetar con terminacion @utez.edu.mx
     val isEmailValid: Boolean
         get() = email.endsWith("@institucion.edu.mx") || email.endsWith("@utez.edu.mx")
 
     val showEmailError: Boolean
         get() = email.isNotEmpty() && !isEmailValid
 
-    // 2. Validación de Contraseña (Mayúsculas, Números, Símbolos)
+    // Validación de Contraseña (debe de contener mayusculas, numeros y simbolos con min 8 mensajes)
     val isPasswordComplex: Boolean
         get() {
             val hasUppercase = password.any { it.isUpperCase() }
@@ -46,7 +44,7 @@ class RegisterViewModel(
     val showPasswordError: Boolean
         get() = password.isNotEmpty() && !isPasswordComplex
 
-    // 3. Validación de Confirmación
+    // Validación de Confirmación
     val passwordsMatch: Boolean
         get() = password == confirmPassword && confirmPassword.isNotEmpty()
 
@@ -56,15 +54,11 @@ class RegisterViewModel(
     // Estado global del botón
     val isFormComplete: Boolean
         get() = isNameValid && isEmailValid && isPasswordComplex && passwordsMatch
-
-    /**
-     * Intenta realizar el registro del usuario.
-     */
     fun onRegisterClicked() {
         if (isFormComplete) {
             viewModelScope.launch {
                 isLoading = true
-                // El username será la parte del correo antes del '@'
+                // El usuaro para iniciar sesion será la parte del correo antes del '@'
                 val username = email.substringBefore("@")
                 val success = repository.register(username, password, email)
                 if (success) {

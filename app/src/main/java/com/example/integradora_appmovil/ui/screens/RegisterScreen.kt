@@ -46,7 +46,6 @@ fun RegisterScreen(
     onBackToLogin: () -> Unit,
     onRegisterSuccess: () -> Unit
 ) {
-    // Vinculamos los estados y validaciones directamente desde el ViewModel
     val fullName = viewModel.fullName
     val email = viewModel.email
     val password = viewModel.password
@@ -60,8 +59,6 @@ fun RegisterScreen(
     val passwordsMatch = viewModel.passwordsMatch
     val showMatchError = viewModel.showMatchError
     val isFormComplete = viewModel.isFormComplete
-
-    // Estados locales para la visibilidad de las contraseñas
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
@@ -75,7 +72,6 @@ fun RegisterScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (!isRegistered) {
-            // Botón Volver
             TextButton(
                 onClick = onBackToLogin,
                 modifier = Modifier
@@ -90,8 +86,7 @@ fun RegisterScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-
-            // Icono Superior
+            // icono superior
             Surface(
                 modifier = Modifier.size(100.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -126,7 +121,7 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- CAMPO NOMBRE COMPLETO ---
+            // Nombre completo
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Nombre completo", color = Color.White, fontSize = 14.sp)
                 OutlinedTextField(
@@ -142,7 +137,7 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- CAMPO CORREO ---
+            // correo
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Correo institucional", color = Color.White, fontSize = 14.sp)
                 OutlinedTextField(
@@ -162,7 +157,7 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- CAMPO CONTRASEÑA ---
+            // contraseña
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Contraseña", color = Color.White, fontSize = 14.sp)
                 OutlinedTextField(
@@ -191,7 +186,7 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- CAMPO CONFIRMAR CONTRASEÑA ---
+            // confirmar contraseña
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Confirmar contraseña", color = Color.White, fontSize = 14.sp)
                 OutlinedTextField(
@@ -220,7 +215,7 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // --- BOTÓN REGISTRAR ---
+            // boton de registrar
             Button(
                 onClick = { viewModel.onRegisterClicked() },
                 modifier = Modifier.fillMaxWidth().height(55.dp),
@@ -242,7 +237,7 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(40.dp))
 
         } else {
-            // --- PANTALLA DE ÉXITO FINAL ---
+            // se muestra la pantalla de exito final
             SuccessRegistrationContent(onFinish = {
                 viewModel.resetRegistration()
                 onRegisterSuccess()
