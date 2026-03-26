@@ -47,7 +47,7 @@ fun LoginScreen(
     onForgotPasswordClick: () -> Unit
 ){
     // Estados del viewModel
-    val user = viewModel.user
+    val user = viewModel.userRole
     val password = viewModel.password
     val isUserInvalid = viewModel.isUserInvalid
     val isPasswordInvalid = viewModel.isPasswordInvalid

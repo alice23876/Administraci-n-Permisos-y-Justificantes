@@ -11,7 +11,7 @@ class LoginViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
 
-    var user by mutableStateOf("")
+    var userRole by mutableStateOf("")
         private set
 
     var password by mutableStateOf("")
@@ -30,7 +30,7 @@ class LoginViewModel(
         private set
 
     fun onUserChange(newValue: String) {
-        user = newValue
+        userRole = newValue
         if (errorMessage.isNotEmpty()) errorMessage = ""
         isUserInvalid = newValue.isNotEmpty() && newValue.length < 4
     }
@@ -43,13 +43,13 @@ class LoginViewModel(
         isPasswordInvalid = newValue.isNotEmpty() && newValue.length < 6
     }
     val canSubmit: Boolean
-        get() = user.isNotEmpty() &&
+        get() = userRole.isNotEmpty() &&
                 password.isNotEmpty() &&
                 !isUserInvalid &&
                 !isPasswordInvalid
 
     fun login(onSuccess: () -> Unit) {
-        if (user.isEmpty() || password.isEmpty()) {
+        if (userRole.isEmpty() || password.isEmpty()) {
             errorMessage = "Campos obligatorios"
             return
         }
@@ -60,7 +60,7 @@ class LoginViewModel(
             isLoading = true
             errorMessage = ""
             try {
-                val isAuthenticated = repository.authenticate(user, password)
+                val isAuthenticated = repository.authenticate(userRole, password)
                 if (isAuthenticated != null) {
                     onSuccess()
                 } else {

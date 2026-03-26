@@ -17,13 +17,21 @@ fun AppNavigation() {
         navController = navController,
         startDestination = Routes.LOGIN
     ) {
-        //LOGIN
+        // LOGIN
         composable(Routes.LOGIN) {
             val loginViewModel: LoginViewModel = viewModel()
+
             LoginScreen(
                 viewModel = loginViewModel,
                 onLoginSuccess = {
-                    navController.navigate(Routes.TEACHER_HOME) {
+                    val role = loginViewModel.userRole
+                    val destino = if (role == "security") {
+                        Routes.SECURITY_GUARD_HOME
+                    } else {
+                        Routes.TEACHER_HOME
+                    }
+
+                    navController.navigate(destino) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
@@ -68,24 +76,58 @@ fun AppNavigation() {
 
         // INICIO DOCENTE
         composable(Routes.TEACHER_HOME) {
+            val loginViewModel: LoginViewModel = viewModel()
             TeacherScreen(
-                userData = UserProfile(name = "Elena", status = "Activa"),
+                userData = UserProfile(
+                    name = loginViewModel.userRole.ifEmpty { "Docente" },
+                    status = "Activa",
+                    lastName = "Pérez", // Datos simulados, vendrán de tu BD
+                    area = "DATIC",
+                    position = "Docente",
+                    email = "docente@utez.edu.mx"
+                ),
                 onLogout = {
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.TEACHER_HOME) { inclusive = true }
                     }
                 },
-                onProfileClick = { /* Navegar a perfil si existe */ },
+                onProfileClick = {
+                    navController.navigate(Routes.TEACHER_PROFILE)
+                },
                 onNavigateToRequests = {
                     navController.navigate(Routes.TEACHER_HISTORY)
+                },
+                onNavigateToNewRequest = {
+                    navController.navigate(Routes.TEACHER_NEW_REQUEST)
+                },
+                onNavigateToNewExitPermit= {
+                    navController.navigate(Routes.TEACHER_NEW_EXIT_PERMIT){
+                        launchSingleTop = true
+                    }
                 }
             )
         }
 
-        // --- HISTORIAL DE SOLICITUDES ---
+        // PERFIL DOCENTE
+        composable(Routes.TEACHER_PROFILE) {
+            val loginViewModel: LoginViewModel = viewModel()
+            ProfileScreen(
+                userData = UserProfile(
+                    name = loginViewModel.userRole.ifEmpty { "Docente" },
+                    lastName = "Pérez",
+                    area = "DATIC",
+                    position = "Docente",
+                    email = "docente@utez.edu.mx",
+                    status = "Activa"
+                ),
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // HISTORIAL DE SOLICITUDES
         composable(Routes.TEACHER_HISTORY) {
             HistoryScreen(
-                requests = listOf(), // Aquí vendrán los datos de tu repositorio/ViewModel
+                requests = listOf(),
                 onBack = { navController.popBackStack() },
                 onNewRequest = {
                     navController.navigate(Routes.TEACHER_NEW_REQUEST)
@@ -100,6 +142,28 @@ fun AppNavigation() {
                 onSuccess = {
                     navController.navigate(Routes.TEACHER_HISTORY) {
                         popUpTo(Routes.TEACHER_NEW_REQUEST) { inclusive = true }
+                    }
+                }
+            )
+        }
+        // NUEVO PASE DE SALIDA
+        composable(Routes.TEACHER_NEW_EXIT_PERMIT){
+            NewExitPermitScreen(
+                onBack = { navController.popBackStack() },
+                onSuccess = {
+                    navController.navigate(Routes.TEACHER_HOME) {
+                        popUpTo(Routes.TEACHER_NEW_EXIT_PERMIT) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        //PERFIL GUARDIA DE SEGURIDAD
+        composable(Routes.SECURITY_GUARD_HOME) {
+            SecurityGuardScreen(
+                onLogout = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.SECURITY_GUARD_HOME) { inclusive = true }
                     }
                 }
             )

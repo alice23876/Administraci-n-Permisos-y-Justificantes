@@ -79,7 +79,7 @@ fun RegisterScreen(
                     .padding(top = 12.dp)
             ) {
                 Text(
-                    text = "Volver a inicio de sesión",
+                    text = "Regresar",
                     color = Color.LightGray.copy(alpha = 0.8f),
                     fontSize = 13.sp
                 )

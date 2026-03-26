@@ -5,11 +5,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import com.example.integradora_appmovil.ui.screens.UserProfile
 import com.example.integradora_appmovil.ui.screens.RequestHistory
-import com.example.integradora_appmovil.ui.screens.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.example.integradora_appmovil.ui.theme.SuccessGreen
+
 
 class TeacherViewModel : ViewModel() {
 

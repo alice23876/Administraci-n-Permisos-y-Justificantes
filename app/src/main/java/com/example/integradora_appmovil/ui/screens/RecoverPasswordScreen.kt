@@ -90,7 +90,7 @@ fun RecoverPasswordScreen(
                 modifier = Modifier.align(Alignment.Start).padding(top = 16.dp)
             ) {
                 Text(
-                    text = "Volver a inicio de sesión",
+                    text = "Regresar",
                     color = Color.LightGray.copy(alpha = 0.8f),
                     fontSize = 13.sp
                 )

@@ -59,7 +59,7 @@ class RegisterViewModel(
             viewModelScope.launch {
                 isLoading = true
                 // El usuaro para iniciar sesion será la parte del correo antes del '@'
-                val username = email.substringBefore("@")
+                val username = email.trim().lowercase()
                 val success = repository.register(username, password, email)
                 if (success) {
                     isRegistered = true
