@@ -20,4 +20,4 @@ val InstitutionGreen = Color(0xFF718E7E)
 val SuccessGreen = Color(0xFF2ECC71)
 val DisabledGray = Color(0xFFBDC3C7)
 
-val ErrorRed: Color = Color(0xFFF44336)
+val ErrorRed = Color(0xFFF44336)
