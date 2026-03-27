@@ -10,8 +10,11 @@ object Routes {
     const val TEACHER_HISTORY = "teacher_history"
     const val TEACHER_NEW_REQUEST = "teacher_new_request"
     const val TEACHER_PROFILE = "teacher_profile"
-
     const val TEACHER_NEW_EXIT_PERMIT = "teacher_new_exit_permit"
 
+    // Rutas para el Director
+    const val DIRECTOR_HOME = "director_home"
+
+    // Rutas para el Guardia
     const val SECURITY_GUARD_HOME = "security_guard_home"
 }
