@@ -1,5 +1,6 @@
 package com.example.integradora_appmovil.ui.screens
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,10 +16,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.launch
 import com.example.integradora_appmovil.ui.theme.HeaderBlue
 import com.example.integradora_appmovil.ui.theme.DarkBlueDrawer
@@ -26,7 +31,7 @@ import com.example.integradora_appmovil.ui.theme.BlueAction
 import com.example.integradora_appmovil.ui.theme.InstitutionGreen
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.DisabledGray
-import com.example.integradora_appmovil.viewmodel.LoginViewModel
+import com.example.integradora_appmovil.viewmodel.SecurityGuardViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,15 +45,29 @@ fun SecurityGuardPreview() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecurityGuardScreen(
+    viewModel: SecurityGuardViewModel = viewModel(),
     onLogout: () -> Unit
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val folioText = viewModel.folioText
+    val showSuccessDialog = viewModel.showSuccessDialog
+    val isFormValid = viewModel.isFormValid
+    val isLoading = viewModel.isLoading
+    val errorMessage = viewModel.errorMessage
+    val validationResult = viewModel.validationResult
+    val activity = context as? Activity
 
-    var folioText by remember { mutableStateOf("") }
-    var showSuccessDialog by remember { mutableStateOf(false) }
-
-    val isFormValid = folioText.isNotEmpty()
+    val barcodeScanner = remember(activity) {
+        activity?.let {
+            val options = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .enableAutoZoom()
+                .build()
+            GmsBarcodeScanning.getClient(it, options)
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -166,7 +185,17 @@ fun SecurityGuardScreen(
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .background(DarkBlueDrawer, RoundedCornerShape(12.dp))
-                                .border(2.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                                .border(2.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                .clickable(enabled = barcodeScanner != null && !isLoading) {
+                                    barcodeScanner?.startScan()
+                                        ?.addOnSuccessListener { barcode ->
+                                            val value = barcode.rawValue?.trim().orEmpty()
+                                            if (value.isNotBlank()) {
+                                                viewModel.onQrScanned(value)
+                                                viewModel.validateFolio()
+                                            }
+                                        }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             // Guías del QR (Simuladas con un borde verde en las esquinas si se desea, aquí simplificado)
@@ -203,7 +232,7 @@ fun SecurityGuardScreen(
                         )
                         OutlinedTextField(
                             value = folioText,
-                            onValueChange = { folioText = it },
+                            onValueChange = viewModel::onFolioChange,
                             placeholder = { Text("EJ: PS-2026-0801", fontSize = 14.sp ) },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             shape = RoundedCornerShape(8.dp),
@@ -212,8 +241,8 @@ fun SecurityGuardScreen(
                                 unfocusedContainerColor = Color(0xFFEEEEEE)
                             )
                         )
-                        Text(
-                            "El folio se encuentra debajo del QR en el pase del empleado.",
+                    Text(
+                        "El folio se encuentra debajo del QR en el pase del empleado.",
                             fontSize = 10.sp,
                             color = Color.DarkGray,
                             textAlign = TextAlign.Start,
@@ -222,12 +251,22 @@ fun SecurityGuardScreen(
                     }
                 }
 
+                if (errorMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = errorMessage,
+                        color = Color(0xFFD32F2F),
+                        fontSize = 13.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 // Botón Validar
                 Button(
-                    onClick = { showSuccessDialog = true },
-                    enabled = isFormValid,
+                    onClick = { viewModel.validateFolio() },
+                    enabled = isFormValid && !isLoading,
                     modifier = Modifier
                         .width(200.dp)
                         .height(50.dp),
@@ -237,7 +276,15 @@ fun SecurityGuardScreen(
                         disabledContainerColor = DisabledGray
                     )
                 ) {
-                    Text("Validar Folio", color = Color.White, fontWeight = FontWeight.Bold)
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Validar Folio", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -258,16 +305,42 @@ fun SecurityGuardScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        "¡Folio validado exitosamente!",
+                        validationResult?.movimientoRegistrado ?: "¡Folio validado exitosamente!",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(bottom = 24.dp)
                     )
+                    validationResult?.let { result ->
+                        Text(
+                            text = result.empleado,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Área: ${result.area}",
+                            color = Color.Gray,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Folio: ${result.folio}",
+                            color = Color.Gray,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = result.fechaRegistro,
+                            color = Color.Gray,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(bottom = 20.dp)
+                        )
+                    }
                     Button(
                         onClick = {
-                            showSuccessDialog = false
-                            folioText = ""
+                            viewModel.dismissSuccessDialog()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
                         shape = RoundedCornerShape(8.dp),

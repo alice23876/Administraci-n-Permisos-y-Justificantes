@@ -1,5 +1,6 @@
 package com.example.integradora_appmovil.network
 
+import com.example.integradora_appmovil.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -17,8 +18,7 @@ class ApiException(
 ) : Exception(message)
 
 object MobileApiClient {
-    // Emulador Android -> backend local de la laptop.
-    const val BASE_URL = "http://10.0.2.2:8080"
+    val BASE_URL: String = BuildConfig.MOBILE_API_BASE_URL.trimEnd('/')
 
     suspend fun postJson(path: String, payload: JSONObject, token: String? = null): JSONObject =
         withContext(Dispatchers.IO) {
@@ -39,6 +39,27 @@ object MobileApiClient {
                 throw ApiException(connection.responseCode, extractErrorMessage(responseBody))
             }
             JSONArray(responseBody.ifBlank { "[]" })
+        }
+
+    suspend fun getJsonObject(path: String, token: String? = null): JSONObject =
+        withContext(Dispatchers.IO) {
+            val connection = openConnection(path, "GET", token)
+            val responseBody = readResponseBody(connection)
+            if (connection.responseCode !in 200..299) {
+                throw ApiException(connection.responseCode, extractErrorMessage(responseBody))
+            }
+            JSONObject(responseBody.ifBlank { "{}" })
+        }
+
+    suspend fun putJson(path: String, payload: JSONObject, token: String? = null): JSONObject =
+        withContext(Dispatchers.IO) {
+            val connection = openConnection(path, "PUT", token)
+            writeJsonBody(connection, payload)
+            val responseBody = readResponseBody(connection)
+            if (connection.responseCode !in 200..299) {
+                throw ApiException(connection.responseCode, extractErrorMessage(responseBody))
+            }
+            JSONObject(responseBody.ifBlank { "{}" })
         }
 
     private fun openConnection(path: String, method: String, token: String?): HttpURLConnection {

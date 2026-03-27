@@ -23,6 +23,33 @@ data class GuardFolioValidationRemote(
     val estado: String
 )
 
+data class DirectorRequestRemote(
+    val id: Long,
+    val tipo: String,
+    val docente: String,
+    val area: String,
+    val fecha: String,
+    val estado: String
+)
+
+data class DirectorRequestDetailRemote(
+    val id: Long,
+    val tipo: String,
+    val docente: String,
+    val area: String,
+    val fecha: String,
+    val estado: String,
+    val motivo: String,
+    val aprobadoPor: String,
+    val fechaSolicitada: String,
+    val horaSolicitada: String,
+    val fechaSalidaRegistrada: String,
+    val fechaEntradaRegistrada: String,
+    val regresaMismoDia: Boolean?,
+    val tieneComprobante: Boolean,
+    val comprobanteNombre: String
+)
+
 class UserRepository {
 
     suspend fun login(correo: String, password: String): AuthSession {
@@ -94,6 +121,87 @@ class UserRepository {
             movimientoRegistrado = response.optString("movimientoRegistrado"),
             fechaRegistro = response.optString("fechaRegistro"),
             estado = response.optString("estado")
+        )
+    }
+
+    suspend fun getDirectorRequests(correo: String, token: String): List<DirectorRequestRemote> {
+        val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
+        val response = MobileApiClient.getJsonArray(
+            path = "/solicitudes/director?correo=$encodedCorreo",
+            token = token
+        )
+
+        return buildList {
+            for (index in 0 until response.length()) {
+                val item = response.getJSONObject(index)
+                add(
+                    DirectorRequestRemote(
+                        id = item.optLong("id"),
+                        tipo = item.optString("tipo"),
+                        docente = item.optString("docente"),
+                        area = item.optString("area"),
+                        fecha = item.optString("fecha"),
+                        estado = item.optString("estado")
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun getDirectorRequestDetail(correo: String, requestId: Long, token: String): DirectorRequestDetailRemote {
+        val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
+        val response = MobileApiClient.postJson(
+            path = "/solicitudes/director/$requestId?correo=$encodedCorreo",
+            payload = JSONObject(),
+            token = token
+        )
+        return mapDirectorDetail(response)
+    }
+
+    suspend fun getDirectorRequestDetailByGet(correo: String, requestId: Long, token: String): DirectorRequestDetailRemote {
+        val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
+        val response = MobileApiClient.getJsonObject(
+            path = "/solicitudes/director/$requestId?correo=$encodedCorreo",
+            token = token
+        )
+        return mapDirectorDetail(response)
+    }
+
+    suspend fun updateDirectorRequestStatus(
+        correo: String,
+        requestId: Long,
+        status: String,
+        token: String
+    ): DirectorRequestDetailRemote {
+        val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
+        val payload = JSONObject().put("estado", status)
+        val response = MobileApiClient.putJson(
+            path = "/solicitudes/director/$requestId/estado?correo=$encodedCorreo",
+            payload = payload,
+            token = token
+        )
+        return mapDirectorDetail(response)
+    }
+
+    private fun mapDirectorDetail(response: JSONObject): DirectorRequestDetailRemote {
+        return DirectorRequestDetailRemote(
+            id = response.optLong("id"),
+            tipo = response.optString("tipo"),
+            docente = response.optString("docente"),
+            area = response.optString("area"),
+            fecha = response.optString("fecha"),
+            estado = response.optString("estado"),
+            motivo = response.optString("motivo"),
+            aprobadoPor = response.optString("aprobadoPor"),
+            fechaSolicitada = response.optString("fechaSolicitada"),
+            horaSolicitada = response.optString("horaSolicitada"),
+            fechaSalidaRegistrada = response.optString("fechaSalidaRegistrada"),
+            fechaEntradaRegistrada = response.optString("fechaEntradaRegistrada"),
+            regresaMismoDia = response.opt("regresaMismoDia")?.let {
+                if (it == JSONObject.NULL) null else response.optBoolean("regresaMismoDia")
+            },
+            tieneComprobante = response.optBoolean("tieneComprobante", false),
+            comprobanteNombre = response.optString("comprobanteNombre")
         )
     }
 }

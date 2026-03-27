@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.integradora_appmovil.model.AuthSession
 import com.example.integradora_appmovil.ui.theme.*
 import com.example.integradora_appmovil.viewmodel.DirectorViewModel
 import kotlinx.coroutines.launch
@@ -38,25 +39,37 @@ data class RequestItem(
     val id: String,
     val teacherName: String,
     val type: String, // "Justificante" o "Permiso"
+    val area: String = "",
     val date: String,
     val status: String, // "PENDIENTE", "APROBADO", "RECHAZADO"
     val reason: String = "Asuntos personales / Médicos",
-    val hasPdf: Boolean = false
+    val approvedBy: String = "Sin asignar",
+    val requestedDate: String = "",
+    val requestedTime: String = "",
+    val departureRegisteredAt: String = "",
+    val entryRegisteredAt: String = "",
+    val returnsSameDay: Boolean? = null,
+    val hasPdf: Boolean = false,
+    val attachmentName: String = ""
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DirectorScreen(
     viewModel: DirectorViewModel,
+    session: AuthSession?,
     onLogout: () -> Unit
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentScreen by remember { mutableStateOf(DirectorNav.HOME) }
-    var selectedRequest by remember { mutableStateOf<RequestItem?>(null) }
-
     val pendingRequests = viewModel.pendingRequests
     val historyRequests = viewModel.historyRequests
+    val selectedRequest = viewModel.selectedRequest
+    val isLoading = viewModel.isLoading
+    val isDetailLoading = viewModel.isDetailLoading
+    val errorMessage = viewModel.errorMessage
+    val detailErrorMessage = viewModel.detailErrorMessage
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -116,31 +129,56 @@ fun DirectorScreen(
             Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color.White)) {
                 when (currentScreen) {
                     DirectorNav.HOME -> DirectorHome(
+                        session = session,
+                        requests = pendingRequests + historyRequests,
+                        isLoading = isLoading,
                         onPendingClick = { currentScreen = DirectorNav.PENDING_REQUESTS },
                         onHistoryClick = { currentScreen = DirectorNav.HISTORY }
                     )
                     DirectorNav.PENDING_REQUESTS -> PendingRequestsList(
+                        isLoading = isLoading,
+                        errorMessage = errorMessage,
                         requests = pendingRequests,
+                        onRetry = { viewModel.refreshRequests() },
                         onDetailClick = {
-                            selectedRequest = it
+                            viewModel.selectRequest(it)
                             currentScreen = DirectorNav.REQUEST_DETAIL
                         }
                     )
                     DirectorNav.REQUEST_DETAIL -> selectedRequest?.let {
                         RequestDetailView(
+                            isLoading = isDetailLoading,
+                            errorMessage = detailErrorMessage,
                             request = it,
-                            onBack = { currentScreen = DirectorNav.PENDING_REQUESTS },
-                            onAction = { status ->
-                                viewModel.updateRequestStatus(it.id, status)
+                            onBack = {
+                                viewModel.clearSelectedRequest()
                                 currentScreen = DirectorNav.PENDING_REQUESTS
+                            },
+                            onAction = { status ->
+                                viewModel.updateRequestStatus(it.id, status) {
+                                    currentScreen = DirectorNav.PENDING_REQUESTS
+                                }
                             }
                         )
+                    } ?: Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (isDetailLoading) {
+                            CircularProgressIndicator()
+                        } else {
+                            Text(detailErrorMessage.ifBlank { "No se pudo cargar la solicitud" }, color = Color.Gray)
+                        }
                     }
                     DirectorNav.HISTORY -> HistoryView(
+                        isLoading = isLoading,
+                        errorMessage = errorMessage,
                         requests = historyRequests,
+                        onBack = { currentScreen = DirectorNav.HOME },
+                        onRetry = { viewModel.refreshRequests() }
+                    )
+                    DirectorNav.PROFILE -> DirectorProfile(
+                        session = session,
+                        requests = pendingRequests + historyRequests,
                         onBack = { currentScreen = DirectorNav.HOME }
                     )
-                    DirectorNav.PROFILE -> Text("Pantalla de Perfil")
                 }
             }
         }
@@ -148,7 +186,16 @@ fun DirectorScreen(
 }
 
 @Composable
-fun DirectorHome(onPendingClick: () -> Unit, onHistoryClick: () -> Unit) {
+fun DirectorHome(
+    session: AuthSession?,
+    requests: List<RequestItem>,
+    isLoading: Boolean,
+    onPendingClick: () -> Unit,
+    onHistoryClick: () -> Unit
+) {
+    val displayName = session?.nombre?.ifBlank { "Director" } ?: "Director"
+    val areaName = requests.firstOrNull { it.area.isNotBlank() }?.area ?: "Sin área asignada"
+
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())
     ) {
@@ -170,7 +217,9 @@ fun DirectorHome(onPendingClick: () -> Unit, onHistoryClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("¡Bienvenido/a Director!", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.DarkGray)
+                    Text("¡Bienvenido/a $displayName!", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.DarkGray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(areaName, color = Color.Gray, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     Surface(
                         color = ActiveGreen,
@@ -189,6 +238,14 @@ fun DirectorHome(onPendingClick: () -> Unit, onHistoryClick: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+
+        if (isLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = SuccessGreen
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -216,6 +273,43 @@ fun DirectorHome(onPendingClick: () -> Unit, onHistoryClick: () -> Unit) {
                 icon = Icons.Default.History,
                 containerColor = GreenAction
             )
+        }
+    }
+}
+
+@Composable
+fun DirectorProfile(
+    session: AuthSession?,
+    requests: List<RequestItem>,
+    onBack: () -> Unit
+) {
+    val displayName = session?.nombre?.ifBlank { "Director" } ?: "Director"
+    val areaName = requests.firstOrNull { it.area.isNotBlank() }?.area ?: "Sin área asignada"
+
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
+            Icon(Icons.Default.ArrowBack, contentDescription = null, tint = BlueAction)
+            Text("Regresar", color = BlueAction, modifier = Modifier.padding(start = 4.dp))
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        Text("Mi perfil", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color.DarkGray)
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = WelcomeCardBG),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(displayName, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.DarkGray)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(session?.correo ?: "", color = Color.Gray)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(session?.rol ?: "Director de area", color = Color.Gray)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(areaName, color = Color.Gray)
+            }
         }
     }
 }
@@ -249,10 +343,30 @@ fun DirectorActionButton(
 }
 
 @Composable
-fun PendingRequestsList(requests: List<RequestItem>, onDetailClick: (RequestItem) -> Unit) {
+fun PendingRequestsList(
+    requests: List<RequestItem>,
+    isLoading: Boolean,
+    errorMessage: String,
+    onRetry: () -> Unit,
+    onDetailClick: (RequestItem) -> Unit
+) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Solicitudes Pendientes", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 16.dp))
-        if (requests.isEmpty()) {
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = SuccessGreen)
+            }
+        } else if (errorMessage.isNotEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(errorMessage, color = ErrorRed, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(onClick = onRetry) {
+                        Text("Reintentar")
+                    }
+                }
+            }
+        } else if (requests.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No hay solicitudes pendientes", color = Color.Gray)
             }
@@ -282,6 +396,7 @@ fun RequestCard(request: RequestItem, onDetailClick: (RequestItem) -> Unit) {
                 StatusBadge(request.status)
             }
             Text("Tipo: ${request.type}", fontSize = 14.sp, color = Color.Gray)
+            Text("Área: ${request.area}", fontSize = 14.sp, color = Color.Gray)
             Text("Fecha: ${request.date}", fontSize = 14.sp, color = Color.Gray)
             Spacer(modifier = Modifier.height(12.dp))
             Button(
@@ -298,7 +413,13 @@ fun RequestCard(request: RequestItem, onDetailClick: (RequestItem) -> Unit) {
 }
 
 @Composable
-fun RequestDetailView(request: RequestItem, onBack: () -> Unit, onAction: (String) -> Unit) {
+fun RequestDetailView(
+    request: RequestItem,
+    isLoading: Boolean,
+    errorMessage: String,
+    onBack: () -> Unit,
+    onAction: (String) -> Unit
+) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
             Icon(Icons.Default.ArrowBack, contentDescription = null, tint = BlueAction)
@@ -313,8 +434,26 @@ fun RequestDetailView(request: RequestItem, onBack: () -> Unit, onAction: (Strin
 
         DetailField("Docente", request.teacherName)
         DetailField("Tipo de solicitud", request.type)
+        DetailField("Área", request.area)
         DetailField("Motivo", request.reason)
-        DetailField("Fecha solicitada", request.date)
+        DetailField("Fecha solicitada", request.requestedDate.ifBlank { request.date })
+        if (request.requestedTime.isNotBlank()) {
+            DetailField("Hora solicitada", request.requestedTime)
+        }
+        DetailField("Aprobado por", request.approvedBy)
+        request.returnsSameDay?.let {
+            DetailField("¿Regresa el mismo día?", if (it) "Sí" else "No")
+        }
+        if (request.departureRegisteredAt.isNotBlank()) {
+            DetailField("Fecha de salida registrada", request.departureRegisteredAt)
+        }
+        if (request.entryRegisteredAt.isNotBlank()) {
+            DetailField("Fecha de entrada registrada", request.entryRegisteredAt)
+        }
+
+        if (errorMessage.isNotEmpty()) {
+            Text(errorMessage, color = ErrorRed, modifier = Modifier.padding(bottom = 12.dp))
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -328,10 +467,14 @@ fun RequestDetailView(request: RequestItem, onBack: () -> Unit, onAction: (Strin
                     Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(40.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Evidencia_Medica.pdf", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("2.4 MB", fontSize = 12.sp, color = Color.Gray)
+                        Text(
+                            if (request.attachmentName.isNotBlank()) request.attachmentName else "Comprobante adjunto",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text("Disponible en versión web", fontSize = 12.sp, color = Color.Gray)
                     }
-                    IconButton(onClick = { /* Descargar */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.Download, contentDescription = null, tint = BlueAction)
                     }
                 }
@@ -353,6 +496,7 @@ fun RequestDetailView(request: RequestItem, onBack: () -> Unit, onAction: (Strin
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
                 onClick = { onAction("RECHAZADO") },
+                enabled = !isLoading,
                 modifier = Modifier.weight(1f).height(50.dp),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed)
@@ -361,11 +505,16 @@ fun RequestDetailView(request: RequestItem, onBack: () -> Unit, onAction: (Strin
             }
             Button(
                 onClick = { onAction("APROBADO") },
+                enabled = !isLoading,
                 modifier = Modifier.weight(1f).height(50.dp),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
             ) {
-                Text("Aprobar")
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Aprobar")
+                }
             }
         }
 
@@ -379,7 +528,13 @@ fun RequestDetailView(request: RequestItem, onBack: () -> Unit, onAction: (Strin
 }
 
 @Composable
-fun HistoryView(requests: List<RequestItem>, onBack: () -> Unit) {
+fun HistoryView(
+    requests: List<RequestItem>,
+    isLoading: Boolean,
+    errorMessage: String,
+    onBack: () -> Unit,
+    onRetry: () -> Unit
+) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
             Icon(Icons.Default.ArrowBack, contentDescription = null, tint = BlueAction)
@@ -387,7 +542,21 @@ fun HistoryView(requests: List<RequestItem>, onBack: () -> Unit) {
         }
         Text("Historial de Solicitudes", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(vertical = 16.dp))
 
-        if (requests.isEmpty()) {
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = SuccessGreen)
+            }
+        } else if (errorMessage.isNotEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(errorMessage, color = ErrorRed, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(onClick = onRetry) {
+                        Text("Reintentar")
+                    }
+                }
+            }
+        } else if (requests.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No hay registros en el historial", color = Color.Gray)
             }
@@ -403,7 +572,7 @@ fun HistoryView(requests: List<RequestItem>, onBack: () -> Unit) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(request.teacherName, fontWeight = FontWeight.Bold)
-                                Text("${request.type} - ${request.date}", fontSize = 13.sp, color = Color.Gray)
+                                Text("${request.type} - ${request.area} - ${request.date}", fontSize = 13.sp, color = Color.Gray)
                             }
                             StatusBadge(request.status)
                         }

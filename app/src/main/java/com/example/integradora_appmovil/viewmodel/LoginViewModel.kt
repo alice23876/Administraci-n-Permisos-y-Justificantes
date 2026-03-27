@@ -66,11 +66,12 @@ class LoginViewModel(
             try {
                 val session = repository.login(email, password)
                 val isSupportedRole = session.rol.equals("Docente", ignoreCase = true) ||
-                        session.rol.equals("Guardia", ignoreCase = true)
+                        session.rol.equals("Guardia", ignoreCase = true) ||
+                        session.rol.equals("Director de area", ignoreCase = true)
 
                 if (!isSupportedRole) {
                     SessionManager.clearSession()
-                    errorMessage = "Por ahora la app móvil solo soporta docentes y guardias"
+                    errorMessage = "Por ahora la app móvil solo soporta docentes, directores y guardias"
                 } else {
                     SessionManager.startSession(session)
                     onSuccess()

@@ -12,6 +12,7 @@ import com.example.integradora_appmovil.ui.screens.*
 import com.example.integradora_appmovil.viewmodel.LoginViewModel
 import com.example.integradora_appmovil.viewmodel.RecoverPasswordViewModel
 import com.example.integradora_appmovil.viewmodel.RegisterViewModel
+import com.example.integradora_appmovil.viewmodel.DirectorViewModel
 import com.example.integradora_appmovil.viewmodel.SecurityGuardViewModel
 import com.example.integradora_appmovil.viewmodel.TeacherViewModel
 
@@ -21,11 +22,13 @@ fun AppNavigation() {
     val loginViewModel: LoginViewModel = viewModel()
     val registerViewModel: RegisterViewModel = viewModel()
     val teacherViewModel: TeacherViewModel = viewModel()
+    val directorViewModel: DirectorViewModel = viewModel()
     val securityGuardViewModel: SecurityGuardViewModel = viewModel()
     val currentSession = SessionManager.currentUser
 
     LaunchedEffect(currentSession?.correo, currentSession?.token) {
         teacherViewModel.bindSession(currentSession)
+        directorViewModel.bindSession(currentSession)
     }
     
     NavHost(
@@ -37,10 +40,11 @@ fun AppNavigation() {
             LoginScreen(
                 viewModel = loginViewModel,
                 onLoginSuccess = {
-                    val destination = if (currentSession?.rol.equals("Guardia", ignoreCase = true)) {
-                        Routes.SECURITY_GUARD_HOME
-                    } else {
-                        Routes.TEACHER_HOME
+                    val activeSession = SessionManager.currentUser
+                    val destination = when {
+                        activeSession?.rol.equals("Guardia", ignoreCase = true) -> Routes.SECURITY_GUARD_HOME
+                        activeSession?.rol.equals("Director de area", ignoreCase = true) -> Routes.DIRECTOR_HOME
+                        else -> Routes.TEACHER_HOME
                     }
 
                     navController.navigate(destination) {
@@ -163,6 +167,20 @@ fun AppNavigation() {
                 onSuccess = {
                     navController.navigate(Routes.TEACHER_HOME) {
                         popUpTo(Routes.TEACHER_NEW_EXIT_PERMIT) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.DIRECTOR_HOME) {
+            DirectorScreen(
+                viewModel = directorViewModel,
+                session = currentSession,
+                onLogout = {
+                    directorViewModel.logout()
+                    loginViewModel.resetForm()
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.DIRECTOR_HOME) { inclusive = true }
                     }
                 }
             )
