@@ -51,6 +51,8 @@ fun RegisterScreen(
     val password = viewModel.password
     val confirmPassword = viewModel.confirmPassword
     val isRegistered = viewModel.isRegistered
+    val errorMessage = viewModel.errorMessage
+    val isLoading = viewModel.isLoading
 
     val isEmailValid = viewModel.isEmailValid
     val showEmailError = viewModel.showEmailError
@@ -143,7 +145,7 @@ fun RegisterScreen(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { viewModel.email = it },
-                    placeholder = { Text("usuario@utez.edu.mx", color = Color.Gray) },
+                    placeholder = { Text("usuario@institucion.edu.mx", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     shape = RoundedCornerShape(8.dp),
                     isError = showEmailError,
@@ -151,7 +153,7 @@ fun RegisterScreen(
                     colors = textFieldCustomColors()
                 )
                 if (showEmailError) {
-                    ErrorText("Ingresa un correo válido (@utez.edu.mx)")
+                    ErrorText("Ingresa un correo válido (.edu.mx)")
                 }
             }
 
@@ -215,23 +217,37 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
 
+            if (errorMessage.isNotEmpty()) {
+                Text(
+                    text = errorMessage,
+                    color = ErrorRed,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                )
+            }
+
             // boton de registrar
             Button(
                 onClick = { viewModel.onRegisterClicked() },
                 modifier = Modifier.fillMaxWidth().height(55.dp),
                 shape = RoundedCornerShape(8.dp),
-                enabled = isFormComplete,
+                enabled = isFormComplete && !isLoading,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = EmeraldButton,
                     disabledContainerColor = DisabledButton
                 )
             ) {
-                Text(
-                    text = "Registrarse",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(
+                        text = "Registrarse",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(40.dp))

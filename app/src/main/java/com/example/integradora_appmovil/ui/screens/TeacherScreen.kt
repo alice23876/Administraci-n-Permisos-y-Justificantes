@@ -625,7 +625,10 @@ fun TimePickerDialog(
 fun HistoryScreen(
     requests: List<RequestHistory>,
     onBack: () -> Unit,
-    onNewRequest: () -> Unit
+    onNewRequest: () -> Unit,
+    isLoading: Boolean = false,
+    errorMessage: String = "",
+    onRetry: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -648,7 +651,21 @@ fun HistoryScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding).background(Color(0xFFF8F9FA)).padding(16.dp)) {
             Text(text = "Historial de solicitudes", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
 
-            if (requests.isEmpty()) {
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = SuccessGreen)
+                }
+            } else if (errorMessage.isNotEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(errorMessage, color = ErrorRed)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(onClick = onRetry) {
+                            Text("Reintentar")
+                        }
+                    }
+                }
+            } else if (requests.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No tienes solicitudes registradas", color = Color.Gray)
                 }

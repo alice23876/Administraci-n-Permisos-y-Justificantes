@@ -47,9 +47,9 @@ fun LoginScreen(
     onForgotPasswordClick: () -> Unit
 ){
     // Estados del viewModel
-    val user = viewModel.userRole
+    val email = viewModel.email
     val password = viewModel.password
-    val isUserInvalid = viewModel.isUserInvalid
+    val isEmailInvalid = viewModel.isEmailInvalid
     val isPasswordInvalid = viewModel.isPasswordInvalid
     val errorMessage = viewModel.errorMessage
     val isLoading = viewModel.isLoading
@@ -100,20 +100,21 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "Usuario",
+            text = "Correo institucional",
             color = Color.White,
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.bodyLarge
         )
 
         OutlinedTextField(
-            value = user,
-            onValueChange = { viewModel.onUserChange(it) },
-            placeholder = { Text("Ingresa tu nombre de usuario", color = Color.Gray) },
+            value = email,
+            onValueChange = { viewModel.onEmailChange(it) },
+            placeholder = { Text("Ingresa tu correo institucional", color = Color.Gray) },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = RoundedCornerShape(8.dp),
             singleLine = true,
-            isError = isUserInvalid,
+            isError = isEmailInvalid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
@@ -126,14 +127,14 @@ fun LoginScreen(
                 errorTextColor = Color.White
             )
         )
-        if (isUserInvalid) {
+        if (isEmailInvalid) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Default.ErrorOutline, "", tint = ErrorRed, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Usuario inválido", color = ErrorRed, fontSize = 12.sp)
+                Text("Ingresa un correo válido (.edu.mx)", color = ErrorRed, fontSize = 12.sp)
             }
         }
 

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.integradora_appmovil.network.ApiException
 import com.example.integradora_appmovil.repository.UserRepository
 import kotlinx.coroutines.launch
 
@@ -19,6 +20,7 @@ class RegisterViewModel(
     var confirmPassword by mutableStateOf("")
     var isRegistered by mutableStateOf(false)
     var isLoading by mutableStateOf(false)
+    var errorMessage by mutableStateOf("")
 
     // Validación de Nombre (no debe estar vacío)
     val isNameValid: Boolean
@@ -27,7 +29,9 @@ class RegisterViewModel(
     // Validación de Correo Institucional
     // Solo debe de acpetar con terminacion @utez.edu.mx
     val isEmailValid: Boolean
-        get() = email.endsWith("@institucion.edu.mx") || email.endsWith("@utez.edu.mx")
+        get() = email.trim().lowercase().matches(
+            Regex("^[^\\s@]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$")
+        )
 
     val showEmailError: Boolean
         get() = email.isNotEmpty() && !isEmailValid
@@ -58,11 +62,19 @@ class RegisterViewModel(
         if (isFormComplete) {
             viewModelScope.launch {
                 isLoading = true
-                // El usuaro para iniciar sesion será la parte del correo antes del '@'
-                val username = email.trim().lowercase()
-                val success = repository.register(username, password, email)
-                if (success) {
+                errorMessage = ""
+                try {
+                    repository.register(
+                        fullName = fullName,
+                        email = email,
+                        password = password,
+                        confirmPassword = confirmPassword
+                    )
                     isRegistered = true
+                } catch (e: ApiException) {
+                    errorMessage = e.message
+                } catch (e: Exception) {
+                    errorMessage = "Error de conexión con el servidor"
                 }
                 isLoading = false
             }
@@ -75,5 +87,7 @@ class RegisterViewModel(
         email = ""
         password = ""
         confirmPassword = ""
+        errorMessage = ""
+        isLoading = false
     }
 }

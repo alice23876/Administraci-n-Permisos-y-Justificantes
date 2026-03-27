@@ -1,97 +1,110 @@
 package com.example.integradora_appmovil.viewmodel
 
-import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.integradora_appmovil.model.AuthSession
+import com.example.integradora_appmovil.model.SessionManager
+import com.example.integradora_appmovil.network.ApiException
+import com.example.integradora_appmovil.repository.TeacherRequestRemote
+import com.example.integradora_appmovil.repository.UserRepository
 import com.example.integradora_appmovil.ui.screens.UserProfile
 import com.example.integradora_appmovil.ui.screens.RequestHistory
+import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import com.example.integradora_appmovil.ui.theme.SuccessGreen
+import kotlinx.coroutines.launch
 
+class TeacherViewModel(
+    private val repository: UserRepository = UserRepository()
+) : ViewModel() {
 
-class TeacherViewModel : ViewModel() {
+    private val _userData = MutableStateFlow<UserProfile?>(null)
+    val userData: StateFlow<UserProfile?> = _userData.asStateFlow()
 
-    // estado de navegacion
-    private val _currentScreen = MutableStateFlow("home")
-    val currentScreen: StateFlow<String> = _currentScreen.asStateFlow()
-
-    // datos de usuario
-    private val _userData = MutableStateFlow(UserProfile(name = "Elena", status = "Activa"))
-    val userData: StateFlow<UserProfile> = _userData.asStateFlow()
-
-    // historial de solicitudes
     private val _historyData = MutableStateFlow<List<RequestHistory>>(emptyList())
     val historyData: StateFlow<List<RequestHistory>> = _historyData.asStateFlow()
 
-    // estado del formulario de nueva solicitud-
-    private val _selectedDate = MutableStateFlow("")
-    val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
+    private val _isHistoryLoading = MutableStateFlow(false)
+    val isHistoryLoading: StateFlow<Boolean> = _isHistoryLoading.asStateFlow()
 
-    private val _motive = MutableStateFlow("")
-    val motive: StateFlow<String> = _motive.asStateFlow()
+    private val _historyError = MutableStateFlow("")
+    val historyError: StateFlow<String> = _historyError.asStateFlow()
 
-    private val _selectedPdfUri = MutableStateFlow<Uri?>(null)
-    val selectedPdfUri: StateFlow<Uri?> = _selectedPdfUri.asStateFlow()
+    private var currentSession: AuthSession? = null
 
-    private val _showSuccessDialog = MutableStateFlow(false)
-    val showSuccessDialog: StateFlow<Boolean> = _showSuccessDialog.asStateFlow()
+    fun bindSession(session: AuthSession?) {
+        currentSession = session
+        if (session == null) {
+            _userData.value = null
+            _historyData.value = emptyList()
+            _historyError.value = ""
+            _isHistoryLoading.value = false
+            return
+        }
 
-    init {
-        loadHistory()
-    }
-    private fun loadHistory() {
-        _historyData.value = listOf(
-            RequestHistory("#1254", "Justificante", "15/03/2026", "Aprobado", SuccessGreen),
-            RequestHistory("#1250", "Pase de Salida", "12/03/2026", "Pendiente", Color(0xFFF1C40F))
-        )
-    }
-
-    // acciones de navegacion
-    fun navigateTo(screen: String) {
-        _currentScreen.value = screen
+        _userData.value = buildUserProfile(session)
+        refreshHistory()
     }
 
-    // acciones del formulario
-    fun onDateSelected(date: String) {
-        _selectedDate.value = date
-    }
-
-    fun onMotiveChange(newMotive: String) {
-        _motive.value = newMotive
-    }
-
-    fun onPdfSelected(uri: Uri?) {
-        _selectedPdfUri.value = uri
-    }
-    // procesa el envio de solicitued
-    fun submitRequest() {
-        if (isFormValid()) {
-            // lógica para guardar en la base de datos
-            _showSuccessDialog.value = true
+    fun refreshHistory() {
+        val session = currentSession ?: return
+        viewModelScope.launch {
+            _isHistoryLoading.value = true
+            _historyError.value = ""
+            try {
+                _historyData.value = repository
+                    .getTeacherRequests(session.correo, session.token)
+                    .map(::mapHistoryItem)
+            } catch (e: ApiException) {
+                _historyError.value = e.message
+                _historyData.value = emptyList()
+            } catch (e: Exception) {
+                _historyError.value = "No se pudo cargar el historial"
+                _historyData.value = emptyList()
+            } finally {
+                _isHistoryLoading.value = false
+            }
         }
     }
 
-    fun dismissSuccessDialog() {
-        _showSuccessDialog.value = false
-        resetForm()
-        navigateTo("home")
-    }
-    // valida que los campos que pide esten completos
-    fun isFormValid(): Boolean {
-        return _selectedDate.value.isNotEmpty() && _motive.value.length >= 10
-    }
-
-    private fun resetForm() {
-        _selectedDate.value = ""
-        _motive.value = ""
-        _selectedPdfUri.value = null
-    }
-
     fun logout() {
-        // limpia sesion, cierra sesion y vuelve al inicio
-        println("Cerrando sesión...")
+        currentSession = null
+        SessionManager.clearSession()
+        _userData.value = null
+        _historyData.value = emptyList()
+        _historyError.value = ""
+        _isHistoryLoading.value = false
+    }
+
+    private fun buildUserProfile(session: AuthSession): UserProfile {
+        val nameParts = session.nombre.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val firstName = nameParts.firstOrNull().orEmpty()
+        val lastName = nameParts.drop(1).joinToString(" ")
+
+        return UserProfile(
+            name = firstName.ifEmpty { session.nombre },
+            lastName = lastName,
+            email = session.correo,
+            area = "",
+            position = session.rol,
+            status = "Activa"
+        )
+    }
+
+    private fun mapHistoryItem(remote: TeacherRequestRemote): RequestHistory {
+        val normalizedStatus = remote.estado.trim()
+        return RequestHistory(
+            id = "#${remote.id}",
+            type = remote.tipo.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+            date = remote.fecha,
+            status = normalizedStatus.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+            statusColor = when {
+                normalizedStatus.equals("Aprobado", ignoreCase = true) -> SuccessGreen
+                normalizedStatus.equals("Rechazado", ignoreCase = true) -> Color(0xFFE53935)
+                else -> Color(0xFFF1C40F)
+            }
+        )
     }
 }

@@ -2,16 +2,31 @@ package com.example.integradora_appmovil.navigation
 
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
+import com.example.integradora_appmovil.model.SessionManager
 import com.example.integradora_appmovil.ui.screens.*
 import com.example.integradora_appmovil.viewmodel.LoginViewModel
 import com.example.integradora_appmovil.viewmodel.RecoverPasswordViewModel
 import com.example.integradora_appmovil.viewmodel.RegisterViewModel
+import com.example.integradora_appmovil.viewmodel.SecurityGuardViewModel
+import com.example.integradora_appmovil.viewmodel.TeacherViewModel
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val loginViewModel: LoginViewModel = viewModel()
+    val registerViewModel: RegisterViewModel = viewModel()
+    val teacherViewModel: TeacherViewModel = viewModel()
+    val securityGuardViewModel: SecurityGuardViewModel = viewModel()
+    val currentSession = SessionManager.currentUser
+
+    LaunchedEffect(currentSession?.correo, currentSession?.token) {
+        teacherViewModel.bindSession(currentSession)
+    }
     
     NavHost(
         navController = navController,
@@ -19,19 +34,16 @@ fun AppNavigation() {
     ) {
         // LOGIN
         composable(Routes.LOGIN) {
-            val loginViewModel: LoginViewModel = viewModel()
-
             LoginScreen(
                 viewModel = loginViewModel,
                 onLoginSuccess = {
-                    val role = loginViewModel.userRole
-                    val destino = if (role == "security") {
+                    val destination = if (currentSession?.rol.equals("Guardia", ignoreCase = true)) {
                         Routes.SECURITY_GUARD_HOME
                     } else {
                         Routes.TEACHER_HOME
                     }
 
-                    navController.navigate(destino) {
+                    navController.navigate(destination) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
@@ -46,7 +58,6 @@ fun AppNavigation() {
 
         // REGISTRO
         composable(Routes.REGISTER) {
-            val registerViewModel: RegisterViewModel = viewModel()
             RegisterScreen(
                 viewModel = registerViewModel,
                 onBackToLogin = { navController.popBackStack() },
@@ -76,17 +87,17 @@ fun AppNavigation() {
 
         // INICIO DOCENTE
         composable(Routes.TEACHER_HOME) {
-            val loginViewModel: LoginViewModel = viewModel()
+            val teacherUserData by teacherViewModel.userData.collectAsState()
             TeacherScreen(
-                userData = UserProfile(
-                    name = loginViewModel.userRole.ifEmpty { "Docente" },
+                userData = teacherUserData ?: UserProfile(
+                    name = "Docente",
                     status = "Activa",
-                    lastName = "Pérez", // Datos simulados, vendrán de tu BD
-                    area = "DATIC",
-                    position = "Docente",
-                    email = "docente@utez.edu.mx"
+                    email = currentSession?.correo.orEmpty(),
+                    position = currentSession?.rol.orEmpty()
                 ),
                 onLogout = {
+                    teacherViewModel.logout()
+                    loginViewModel.resetForm()
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.TEACHER_HOME) { inclusive = true }
                     }
@@ -110,28 +121,27 @@ fun AppNavigation() {
 
         // PERFIL DOCENTE
         composable(Routes.TEACHER_PROFILE) {
-            val loginViewModel: LoginViewModel = viewModel()
+            val teacherUserData by teacherViewModel.userData.collectAsState()
             ProfileScreen(
-                userData = UserProfile(
-                    name = loginViewModel.userRole.ifEmpty { "Docente" },
-                    lastName = "Pérez",
-                    area = "DATIC",
-                    position = "Docente",
-                    email = "docente@utez.edu.mx",
-                    status = "Activa"
-                ),
+                userData = teacherUserData,
                 onBack = { navController.popBackStack() }
             )
         }
 
         // HISTORIAL DE SOLICITUDES
         composable(Routes.TEACHER_HISTORY) {
+            val history by teacherViewModel.historyData.collectAsState()
+            val isHistoryLoading by teacherViewModel.isHistoryLoading.collectAsState()
+            val historyError by teacherViewModel.historyError.collectAsState()
             HistoryScreen(
-                requests = listOf(),
+                requests = history,
                 onBack = { navController.popBackStack() },
                 onNewRequest = {
                     navController.navigate(Routes.TEACHER_NEW_REQUEST)
-                }
+                },
+                isLoading = isHistoryLoading,
+                errorMessage = historyError,
+                onRetry = { teacherViewModel.refreshHistory() }
             )
         }
 
@@ -161,7 +171,11 @@ fun AppNavigation() {
         //PERFIL GUARDIA DE SEGURIDAD
         composable(Routes.SECURITY_GUARD_HOME) {
             SecurityGuardScreen(
+                viewModel = securityGuardViewModel,
                 onLogout = {
+                    securityGuardViewModel.dismissSuccessDialog()
+                    loginViewModel.resetForm()
+                    SessionManager.clearSession()
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.SECURITY_GUARD_HOME) { inclusive = true }
                     }

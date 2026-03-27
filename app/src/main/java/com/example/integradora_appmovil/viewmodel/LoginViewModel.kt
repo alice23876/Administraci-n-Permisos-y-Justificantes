@@ -5,19 +5,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.integradora_appmovil.model.SessionManager
+import com.example.integradora_appmovil.network.ApiException
 import com.example.integradora_appmovil.repository.UserRepository
 import kotlinx.coroutines.launch
 class LoginViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
 
-    var userRole by mutableStateOf("")
+    var email by mutableStateOf("")
         private set
 
     var password by mutableStateOf("")
         private set
 
-    var isUserInvalid by mutableStateOf(false)
+    var isEmailInvalid by mutableStateOf(false)
         private set
 
     var isPasswordInvalid by mutableStateOf(false)
@@ -29,27 +31,29 @@ class LoginViewModel(
     var isLoading by mutableStateOf(false)
         private set
 
-    fun onUserChange(newValue: String) {
-        userRole = newValue
+    fun onEmailChange(newValue: String) {
+        email = newValue
         if (errorMessage.isNotEmpty()) errorMessage = ""
-        isUserInvalid = newValue.isNotEmpty() && newValue.length < 4
+        val normalizedValue = newValue.trim().lowercase()
+        isEmailInvalid = normalizedValue.isNotEmpty() &&
+                !normalizedValue.matches(
+                    Regex("^[^\\s@]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$")
+                )
     }
 
     fun onPasswordChange(newValue: String) {
         password = newValue
         if (errorMessage.isNotEmpty()) errorMessage = ""
-
-        // La contraseña es inválida si tiene texto pero menos de 6 caracteres
-        isPasswordInvalid = newValue.isNotEmpty() && newValue.length < 6
+        isPasswordInvalid = false
     }
     val canSubmit: Boolean
-        get() = userRole.isNotEmpty() &&
+        get() = email.isNotEmpty() &&
                 password.isNotEmpty() &&
-                !isUserInvalid &&
+                !isEmailInvalid &&
                 !isPasswordInvalid
 
     fun login(onSuccess: () -> Unit) {
-        if (userRole.isEmpty() || password.isEmpty()) {
+        if (email.isEmpty() || password.isEmpty()) {
             errorMessage = "Campos obligatorios"
             return
         }
@@ -60,17 +64,33 @@ class LoginViewModel(
             isLoading = true
             errorMessage = ""
             try {
-                val isAuthenticated = repository.authenticate(userRole, password)
-                if (isAuthenticated != null) {
-                    onSuccess()
+                val session = repository.login(email, password)
+                val isSupportedRole = session.rol.equals("Docente", ignoreCase = true) ||
+                        session.rol.equals("Guardia", ignoreCase = true)
+
+                if (!isSupportedRole) {
+                    SessionManager.clearSession()
+                    errorMessage = "Por ahora la app móvil solo soporta docentes y guardias"
                 } else {
-                    errorMessage = "Usuario o contraseña incorrectos"
+                    SessionManager.startSession(session)
+                    onSuccess()
                 }
+            } catch (e: ApiException) {
+                errorMessage = e.message
             } catch (e: Exception) {
                 errorMessage = "Error de conexión con el servidor"
             } finally {
                 isLoading = false
             }
         }
+    }
+
+    fun resetForm() {
+        email = ""
+        password = ""
+        errorMessage = ""
+        isEmailInvalid = false
+        isPasswordInvalid = false
+        isLoading = false
     }
 }
