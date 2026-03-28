@@ -17,4 +17,7 @@ object Routes {
 
     // Rutas para el Guardia
     const val SECURITY_GUARD_HOME = "security_guard_home"
+
+    // Rutas para el Super Admin
+    const val SUPER_ADMIN_HOME = "super_admin_home"
 }

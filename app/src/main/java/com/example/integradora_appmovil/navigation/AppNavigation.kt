@@ -14,6 +14,7 @@ import com.example.integradora_appmovil.viewmodel.RecoverPasswordViewModel
 import com.example.integradora_appmovil.viewmodel.RegisterViewModel
 import com.example.integradora_appmovil.viewmodel.DirectorViewModel
 import com.example.integradora_appmovil.viewmodel.SecurityGuardViewModel
+import com.example.integradora_appmovil.viewmodel.SuperAdminViewModel
 import com.example.integradora_appmovil.viewmodel.TeacherViewModel
 
 @Composable
@@ -24,11 +25,13 @@ fun AppNavigation() {
     val teacherViewModel: TeacherViewModel = viewModel()
     val directorViewModel: DirectorViewModel = viewModel()
     val securityGuardViewModel: SecurityGuardViewModel = viewModel()
+    val superAdminViewModel: SuperAdminViewModel = viewModel()
     val currentSession = SessionManager.currentUser
 
     LaunchedEffect(currentSession?.correo, currentSession?.token) {
         teacherViewModel.bindSession(currentSession)
         directorViewModel.bindSession(currentSession)
+        superAdminViewModel.bindSession(currentSession)
     }
     
     NavHost(
@@ -42,6 +45,7 @@ fun AppNavigation() {
                 onLoginSuccess = {
                     val activeSession = SessionManager.currentUser
                     val destination = when {
+                        activeSession?.rol.equals("Super administrador", ignoreCase = true) -> Routes.SUPER_ADMIN_HOME
                         activeSession?.rol.equals("Guardia", ignoreCase = true) -> Routes.SECURITY_GUARD_HOME
                         activeSession?.rol.equals("Director de area", ignoreCase = true) -> Routes.DIRECTOR_HOME
                         else -> Routes.TEACHER_HOME
@@ -80,7 +84,7 @@ fun AppNavigation() {
             RecoverPasswordScreen(
                 viewModel = recoverPasswordViewModel,
                 onBackToLogin = { navController.popBackStack() },
-                onCodeSent = { recoverPasswordViewModel.nextStep() },
+                onCodeSent = { },
                 onFinish = {
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.RECOVER) { inclusive = true }
@@ -137,6 +141,12 @@ fun AppNavigation() {
             val history by teacherViewModel.historyData.collectAsState()
             val isHistoryLoading by teacherViewModel.isHistoryLoading.collectAsState()
             val historyError by teacherViewModel.historyError.collectAsState()
+            val selectedDetail by teacherViewModel.selectedRequestDetail.collectAsState()
+            val isDetailLoading by teacherViewModel.isDetailLoading.collectAsState()
+            val detailError by teacherViewModel.detailError.collectAsState()
+            val selectedQr by teacherViewModel.selectedQr.collectAsState()
+            val isQrLoading by teacherViewModel.isQrLoading.collectAsState()
+            val qrError by teacherViewModel.qrError.collectAsState()
             HistoryScreen(
                 requests = history,
                 onBack = { navController.popBackStack() },
@@ -145,7 +155,17 @@ fun AppNavigation() {
                 },
                 isLoading = isHistoryLoading,
                 errorMessage = historyError,
-                onRetry = { teacherViewModel.refreshHistory() }
+                onRetry = { teacherViewModel.refreshHistory() },
+                onViewDetail = { teacherViewModel.openRequestDetail(it) },
+                onViewQr = { teacherViewModel.openQr(it) },
+                selectedDetail = selectedDetail,
+                isDetailLoading = isDetailLoading,
+                detailError = detailError,
+                onDismissDetail = { teacherViewModel.clearRequestDetail() },
+                selectedQr = selectedQr,
+                isQrLoading = isQrLoading,
+                qrError = qrError,
+                onDismissQr = { teacherViewModel.clearQr() }
             )
         }
 
@@ -196,6 +216,20 @@ fun AppNavigation() {
                     SessionManager.clearSession()
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.SECURITY_GUARD_HOME) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.SUPER_ADMIN_HOME) {
+            SuperAdminScreen(
+                viewModel = superAdminViewModel,
+                session = currentSession,
+                onLogout = {
+                    superAdminViewModel.logout()
+                    loginViewModel.resetForm()
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.SUPER_ADMIN_HOME) { inclusive = true }
                     }
                 }
             )

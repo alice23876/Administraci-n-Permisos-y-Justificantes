@@ -3,6 +3,7 @@ package com.example.integradora_appmovil.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,11 +25,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.util.*
 import com.example.integradora_appmovil.ui.theme.ErrorRed
@@ -56,11 +60,41 @@ data class UserProfile(
 )
 
 data class RequestHistory(
+    val numericId: Long,
     val id: String,
     val type: String,
+    val directivo: String,
+    val area: String,
     val date: String,
     val status: String,
-    val statusColor: Color
+    val statusColor: Color,
+    val canViewQr: Boolean
+)
+
+data class TeacherRequestDetailState(
+    val id: Long,
+    val tipo: String,
+    val directivo: String,
+    val area: String,
+    val fecha: String,
+    val estado: String,
+    val motivo: String,
+    val fechaSolicitada: String,
+    val horaSolicitada: String,
+    val fechaSalidaRegistrada: String,
+    val fechaEntradaRegistrada: String,
+    val regresaMismoDia: Boolean?,
+    val tieneComprobante: Boolean,
+    val comprobanteNombre: String
+)
+
+data class TeacherQrState(
+    val solicitudId: Long,
+    val qrValue: String,
+    val folio: String,
+    val aprobadoPor: String,
+    val validoPara: String,
+    val usosRestantes: Int
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -628,7 +662,17 @@ fun HistoryScreen(
     onNewRequest: () -> Unit,
     isLoading: Boolean = false,
     errorMessage: String = "",
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    onViewDetail: (RequestHistory) -> Unit = {},
+    onViewQr: (RequestHistory) -> Unit = {},
+    selectedDetail: TeacherRequestDetailState? = null,
+    isDetailLoading: Boolean = false,
+    detailError: String = "",
+    onDismissDetail: () -> Unit = {},
+    selectedQr: TeacherQrState? = null,
+    isQrLoading: Boolean = false,
+    qrError: String = "",
+    onDismissQr: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -671,8 +715,240 @@ fun HistoryScreen(
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(requests) { item -> HistoryItemCard(item) }
+                    items(requests) { item ->
+                        HistoryItemCard(
+                            item = item,
+                            onViewDetail = { onViewDetail(item) },
+                            onViewQr = { onViewQr(item) }
+                        )
+                    }
                 }
+            }
+        }
+    }
+
+    if (selectedDetail != null || isDetailLoading || detailError.isNotEmpty()) {
+        TeacherRequestDetailDialog(
+            request = selectedDetail,
+            isLoading = isDetailLoading,
+            errorMessage = detailError,
+            onDismiss = onDismissDetail
+        )
+    }
+
+    if (selectedQr != null || isQrLoading || qrError.isNotEmpty()) {
+        TeacherQrDialog(
+            qrState = selectedQr,
+            isLoading = isQrLoading,
+            errorMessage = qrError,
+            onDismiss = onDismissQr
+        )
+    }
+}
+
+@Composable
+fun TeacherRequestDetailDialog(
+    request: TeacherRequestDetailState?,
+    isLoading: Boolean,
+    errorMessage: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color.White,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = request?.let { "${it.tipo} #${it.id}" } ?: "Detalle de solicitud",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray)
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+
+                when {
+                    isLoading -> Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = SuccessGreen)
+                    }
+                    errorMessage.isNotEmpty() -> Text(errorMessage, color = ErrorRed)
+                    request != null -> {
+                        val isPermiso = request.tipo.contains("permiso", ignoreCase = true)
+
+                        DetailRow("Directivo:", request.directivo.ifBlank { "Sin asignar" }, "Area:", request.area.ifBlank { "Sin asignar" })
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DetailRow("Tipo:", request.tipo, "Fecha:", request.fecha)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DetailRow(
+                            if (isPermiso) "Hora solicitada:" else "Fecha solicitada:",
+                            if (isPermiso) request.horaSolicitada.ifBlank { "--:--" } else request.fechaSolicitada.ifBlank { "--/--/----" },
+                            "Estado:",
+                            request.estado
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        if (isPermiso) {
+                            DetailRow(
+                                "Regresa mismo dia?",
+                                if (request.regresaMismoDia == true) "Si" else "No",
+                                "Salida registrada:",
+                                request.fechaSalidaRegistrada.ifBlank { "--/--/---- --:--" }
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            DetailRow(
+                                "Entrada registrada:",
+                                request.fechaEntradaRegistrada.ifBlank { "--/--/---- --:--" },
+                                "",
+                                ""
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        Text("Motivo:", color = Color.Gray, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(request.motivo, color = Color(0xFF4A4A4A), fontSize = 15.sp)
+
+                        if (request.tieneComprobante) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                color = Color(0xFFE8F8EC),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFF7EDB8C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Comprobante adjunto", color = Color(0xFF4A9E59), fontSize = 13.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        request.comprobanteNombre.ifBlank { "comprobante.pdf" },
+                                        color = Color(0xFF4A4A4A),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) {
+                        Text("Cerrar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TeacherQrDialog(
+    qrState: TeacherQrState?,
+    isLoading: Boolean,
+    errorMessage: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color.White,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Codigo QR — Pase de Salida", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray)
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+
+                when {
+                    isLoading -> Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = SuccessGreen)
+                    }
+                    errorMessage.isNotEmpty() -> Text(errorMessage, color = ErrorRed)
+                    qrState != null -> {
+                        Surface(
+                            color = Color(0xFFDFF3E3),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFF7EDB8C)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Pase aprobado por ${qrState.aprobadoPor}", color = Color(0xFF4A9E59), fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(qrState.validoPara, color = Color(0xFF4A9E59), fontSize = 14.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(0.dp),
+                            border = BorderStroke(2.dp, Color(0xFFC4C4C4)),
+                            modifier = Modifier.width(240.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                AsyncImage(
+                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${Uri.encode(qrState.qrValue)}",
+                                    contentDescription = "QR del permiso",
+                                    modifier = Modifier.size(180.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HorizontalDivider(color = Color(0xFFC4C4C4))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Folio del pase", color = Color.Gray, fontSize = 13.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(qrState.folio, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+                OutlinedButton(onClick = onDismiss) {
+                    Text("Cerrar")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(leftLabel: String, leftValue: String, rightLabel: String, rightValue: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(modifier = Modifier.weight(1f)) {
+            if (leftLabel.isNotBlank()) {
+                Text(leftLabel, color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(leftValue.ifBlank { "Sin asignar" }, color = Color(0xFF4A4A4A), fontSize = 15.sp)
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            if (rightLabel.isNotBlank()) {
+                Text(rightLabel, color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(rightValue.ifBlank { "Sin asignar" }, color = Color(0xFF4A4A4A), fontSize = 15.sp)
             }
         }
     }
@@ -745,7 +1021,11 @@ fun InfoField(modifier: Modifier = Modifier, label: String, value: String) {
 }
 
 @Composable
-fun HistoryItemCard(item: RequestHistory) {
+fun HistoryItemCard(
+    item: RequestHistory,
+    onViewDetail: () -> Unit,
+    onViewQr: () -> Unit
+) {
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -760,8 +1040,55 @@ fun HistoryItemCard(item: RequestHistory) {
             }
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column { Text("Fecha", fontSize = 11.sp, color = Color.Gray); Text(item.date, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
-                if (item.status == "Aprobado") Icon(Icons.Default.QrCode, contentDescription = null, tint = BlueAction, modifier = Modifier.size(24.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PersonOutline, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Directivo: ${item.directivo.ifBlank { "Sin asignar" }}", fontSize = 14.sp, color = Color(0xFF6B6B6B))
+                }
+                Text("Area: ${item.area.ifBlank { "Sin asignar" }}", fontSize = 14.sp, color = Color(0xFF6B6B6B))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Fecha: ${item.date}", fontSize = 14.sp, color = Color(0xFF6B6B6B))
+                }
+                Text("Detalles automáticos", fontSize = 12.sp, color = Color.LightGray, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onViewDetail,
+                    modifier = Modifier.weight(1f).height(42.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFF0F0F0),
+                        contentColor = Color(0xFF6B6B6B)
+                    )
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Ver detalle", fontWeight = FontWeight.SemiBold)
+                }
+                if (item.canViewQr) {
+                    Button(
+                        onClick = onViewQr,
+                        modifier = Modifier.width(46.dp).height(42.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SuccessGreen,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Default.QrCode2, contentDescription = "Ver QR", modifier = Modifier.size(22.dp))
+                    }
+                }
             }
         }
     }

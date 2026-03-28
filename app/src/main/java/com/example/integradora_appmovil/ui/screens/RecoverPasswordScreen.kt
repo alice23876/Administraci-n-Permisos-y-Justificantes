@@ -23,8 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.integradora_appmovil.viewmodel.RecoverPasswordViewModel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,27 +46,20 @@ fun RecoverPasswordScreen(
     onCodeSent: () -> Unit,
     onFinish: () -> Unit
 ){
-    // Control de flujo: 1 = Correo, 2 = Código, 3 = Nueva Contraseña, 4 = Éxito Final
-    var currentStep by remember { mutableStateOf(1) }
-
-    // Estados para el Paso 1 (Correo)
-    var email by remember { mutableStateOf("") }
-    val isEmailValid = android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
-    val showEmailError = email.isNotEmpty() && !isEmailValid
-
-    // Estados para el Paso 2 (Código)
-    var code by remember { mutableStateOf("") }
-    var isCodeInvalid by remember { mutableStateOf(false) }
-    var showResendSuccess by remember { mutableStateOf(false) }
-    val isCodeComplete = code.length == 5
-    val scope = rememberCoroutineScope()
-
-    // Estados para el Paso 3 (Nueva Contraseña)
-    var newPassword by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    val passwordsMatch = newPassword == confirmPassword && newPassword.isNotEmpty()
-    val isFormValid = newPassword.length >= 8 && confirmPassword.length >= 8 && passwordsMatch
-    val showMatchError = confirmPassword.isNotEmpty() && newPassword != confirmPassword
+    val currentStep = viewModel.currentStep
+    val email = viewModel.email
+    val showEmailError = viewModel.showEmailError
+    val code = viewModel.code
+    val isCodeInvalid = viewModel.isCodeInvalid
+    val showResendSuccess = viewModel.showResendSuccess
+    val isCodeComplete = viewModel.isCodeComplete
+    val newPassword = viewModel.newPassword
+    val confirmPassword = viewModel.confirmPassword
+    val isFormValid = viewModel.isFormValid
+    val showMatchError = viewModel.showMatchError
+    val showPasswordComplexityError = viewModel.showPasswordComplexityError
+    val isLoading = viewModel.isLoading
+    val errorMessage = viewModel.errorMessage
 
     Column(
         modifier = Modifier
@@ -81,11 +72,7 @@ fun RecoverPasswordScreen(
         if (currentStep < 4) {
             TextButton(
                 onClick = {
-                    if (currentStep > 1) {
-                        currentStep--
-                        isCodeInvalid = false
-                        showResendSuccess = false
-                    } else onBackToLogin()
+                    viewModel.previousStep(onBackToLogin)
                 },
                 modifier = Modifier.align(Alignment.Start).padding(top = 16.dp)
             ) {
@@ -164,51 +151,42 @@ fun RecoverPasswordScreen(
 
         // --- CONTENIDO DINÁMICO ---
         when (currentStep) {
-            1 -> {
-                EmailStepContent(
-                    email = email,
-                    onEmailChange = { email = it },
-                    isError = showEmailError,
-                    onNext = { currentStep = 2 },
-                    isValid = isEmailValid
-                )
-            }
-            2 -> {
-                CodeStepContent(
-                    code = code,
-                    onCodeChange = {
-                        if(it.length <= 5) {
-                            code = it
-                            isCodeInvalid = false
-                        }
-                    },
-                    onVerify = {
-                        if (code == "12345") currentStep = 3 else isCodeInvalid = true
-                    },
-                    isValid = isCodeComplete,
-                    isInvalid = isCodeInvalid,
-                    onResend = {
-                        scope.launch {
-                            showResendSuccess = true
-                            delay(3000)
-                            showResendSuccess = false
-                        }
-                    },
-                    showResendSuccess = showResendSuccess
-                )
-            }
-            3 -> {
-                PasswordStepContent(
-                    newPassword = newPassword,
-                    confirmPassword = confirmPassword,
-                    onNewPasswordChange = { newPassword = it },
-                    onConfirmPasswordChange = { confirmPassword = it },
-                    showMatchError = showMatchError,
-                    isValid = isFormValid,
-                    onFinish = { currentStep = 4 }
-                )
-            }
-            4 -> {
+                1 -> {
+                    EmailStepContent(
+                        email = email,
+                        onEmailChange = viewModel::onEmailChange,
+                        isError = showEmailError,
+                        onNext = { viewModel.requestRecoveryCode(onCodeSent) },
+                        isValid = viewModel.isEmailValid,
+                        isLoading = isLoading
+                    )
+                }
+                2 -> {
+                    CodeStepContent(
+                        code = code,
+                        onCodeChange = viewModel::onCodeChange,
+                        onVerify = viewModel::verifyCode,
+                        isValid = isCodeComplete,
+                        isInvalid = isCodeInvalid,
+                        onResend = viewModel::resendCode,
+                        showResendSuccess = showResendSuccess,
+                        isLoading = isLoading
+                    )
+                }
+                3 -> {
+                    PasswordStepContent(
+                        newPassword = newPassword,
+                        confirmPassword = confirmPassword,
+                        onNewPasswordChange = viewModel::onNewPasswordChange,
+                        onConfirmPasswordChange = viewModel::onConfirmPasswordChange,
+                        showMatchError = showMatchError,
+                        showPasswordComplexityError = showPasswordComplexityError,
+                        isValid = isFormValid,
+                        onFinish = viewModel::resetPassword,
+                        isLoading = isLoading
+                    )
+                }
+                4 -> {
                 // PANTALLA DE ÉXITO FINAL
                 Button(
                     onClick = onFinish,
@@ -219,6 +197,16 @@ fun RecoverPasswordScreen(
                     Text("Ir a Inicio de Sesión", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
+        }
+
+        if (errorMessage.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = errorMessage,
+                color = ErrorRed,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
         }
 
         if (currentStep < 4) {
@@ -238,7 +226,8 @@ fun EmailStepContent(
     onEmailChange: (String) -> Unit,
     isError: Boolean,
     onNext: () -> Unit,
-    isValid: Boolean
+    isValid: Boolean,
+    isLoading: Boolean
 ) {
     Column {
         Text("Correo electrónico", color = Color.White, style = MaterialTheme.typography.bodyLarge)
@@ -272,13 +261,17 @@ fun EmailStepContent(
             onClick = onNext,
             modifier = Modifier.fillMaxWidth().height(55.dp),
             shape = RoundedCornerShape(8.dp),
-            enabled = isValid,
+            enabled = isValid && !isLoading,
             colors = ButtonDefaults.buttonColors(
                 containerColor = EmeraldButton,
                 disabledContainerColor = DisabledButton
             )
         ) {
-            Text("Enviar código de recuperación", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Enviar código de recuperación", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
     }
 }
@@ -292,7 +285,8 @@ fun CodeStepContent(
     isValid: Boolean,
     isInvalid: Boolean,
     onResend: () -> Unit,
-    showResendSuccess: Boolean
+    showResendSuccess: Boolean,
+    isLoading: Boolean
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -331,18 +325,22 @@ fun CodeStepContent(
             onClick = onVerify,
             modifier = Modifier.fillMaxWidth().height(55.dp),
             shape = RoundedCornerShape(8.dp),
-            enabled = isValid,
+            enabled = isValid && !isLoading,
             colors = ButtonDefaults.buttonColors(
                 containerColor = EmeraldButton,
                 disabledContainerColor = DisabledButton
             )
         ) {
-            Text("Verificar código", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Verificar código", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 16.dp)) {
             Text("¿No te llegó el código?", color = Color.LightGray, fontSize = 14.sp)
-            TextButton(onClick = onResend) {
+            TextButton(onClick = onResend, enabled = !isLoading) {
                 Text("Reenviar", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
             }
         }
@@ -371,8 +369,10 @@ fun PasswordStepContent(
     onNewPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     showMatchError: Boolean,
+    showPasswordComplexityError: Boolean,
     isValid: Boolean,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
+    isLoading: Boolean
 ) {
     Column {
         Text("Nueva contraseña", color = Color.White, style = MaterialTheme.typography.bodyLarge)
@@ -392,6 +392,14 @@ fun PasswordStepContent(
                 unfocusedTextColor = Color.White
             )
         )
+
+        if (showPasswordComplexityError) {
+            Row(modifier = Modifier.padding(top = 4.dp)) {
+                Icon(Icons.Default.ErrorOutline, null, tint = ErrorRed, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Incluye mayúsculas, números y símbolos ($@#)", color = ErrorRed, fontSize = 12.sp)
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -428,13 +436,17 @@ fun PasswordStepContent(
             onClick = onFinish,
             modifier = Modifier.fillMaxWidth().height(55.dp),
             shape = RoundedCornerShape(8.dp),
-            enabled = isValid,
+            enabled = isValid && !isLoading,
             colors = ButtonDefaults.buttonColors(
                 containerColor = EmeraldButton,
                 disabledContainerColor = DisabledButton
             )
         ) {
-            Text("Actualizar contraseña", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Actualizar contraseña", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
     }
 }

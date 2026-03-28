@@ -1,6 +1,10 @@
 package com.example.integradora_appmovil.ui.screens
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -67,6 +72,33 @@ fun SecurityGuardScreen(
                 .build()
             GmsBarcodeScanning.getClient(it, options)
         }
+    }
+    val startScan = remember(barcodeScanner, isLoading) {
+        {
+            if (!isLoading) {
+                barcodeScanner?.startScan()
+                    ?.addOnSuccessListener { barcode ->
+                        val value = barcode.rawValue?.trim().orEmpty()
+                        if (value.isNotBlank()) {
+                            viewModel.onQrScanned(value)
+                            viewModel.validateFolio()
+                        }
+                    }
+            }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startScan()
+        }
+    }
+    val hasCameraPermission = remember(context) {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     ModalNavigationDrawer(
@@ -187,14 +219,16 @@ fun SecurityGuardScreen(
                                 .background(DarkBlueDrawer, RoundedCornerShape(12.dp))
                                 .border(2.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                                 .clickable(enabled = barcodeScanner != null && !isLoading) {
-                                    barcodeScanner?.startScan()
-                                        ?.addOnSuccessListener { barcode ->
-                                            val value = barcode.rawValue?.trim().orEmpty()
-                                            if (value.isNotBlank()) {
-                                                viewModel.onQrScanned(value)
-                                                viewModel.validateFolio()
-                                            }
-                                        }
+                                    val isCameraGranted = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.CAMERA
+                                    ) == PackageManager.PERMISSION_GRANTED
+
+                                    if (isCameraGranted || hasCameraPermission) {
+                                        startScan()
+                                    } else {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
