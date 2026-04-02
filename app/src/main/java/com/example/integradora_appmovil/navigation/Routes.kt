@@ -20,4 +20,9 @@ object Routes {
 
     // Rutas para el Super Admin
     const val SUPER_ADMIN_HOME = "super_admin_home"
+    const val SUPER_ADMIN_USERS = "super_admin_users"
+    const val SUPER_ADMIN_CREATE_USER = "super_admin_create_user"
+    const val SUPER_ADMIN_AREAS = "super_admin_areas"
+    const val SUPER_ADMIN_CREATE_AREA = "super_admin_create_area"
+    const val SUPER_ADMIN_USER_STATUS = "super_admin_user_status"
 }

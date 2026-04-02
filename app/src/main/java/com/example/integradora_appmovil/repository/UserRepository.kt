@@ -368,6 +368,65 @@ class UserRepository {
         )
     }
 
+    suspend fun createAdminUser(payload: JSONObject, token: String): AdminUserRemote {
+        val response = MobileApiClient.postJson("/admin/users", payload, token)
+        return AdminUserRemote(
+            id = response.optLong("id"),
+            nombre = response.optString("nombre"),
+            correo = response.optString("correo"),
+            departamento = response.optString("departamento"),
+            rol = response.optString("rol"),
+            activo = response.optBoolean("activo")
+        )
+    }
+
+    suspend fun updateAdminUserRole(userId: Long, role: String, token: String): AdminUserRemote {
+        val payload = JSONObject().put("rol", role)
+        val response = MobileApiClient.putJson("/admin/users/$userId/role", payload, token)
+        return AdminUserRemote(
+            id = response.optLong("id"),
+            nombre = response.optString("nombre"),
+            correo = response.optString("correo"),
+            departamento = response.optString("departamento"),
+            rol = response.optString("rol"),
+            activo = response.optBoolean("activo")
+        )
+    }
+
+    suspend fun updateAdminUserArea(userId: Long, areaId: Long, token: String): AdminUserRemote {
+        val payload = JSONObject().put("areaId", areaId)
+        val response = MobileApiClient.putJson("/admin/users/$userId/area", payload, token)
+        return AdminUserRemote(
+            id = response.optLong("id"),
+            nombre = response.optString("nombre"),
+            correo = response.optString("correo"),
+            departamento = response.optString("departamento"),
+            rol = response.optString("rol"),
+            activo = response.optBoolean("activo")
+        )
+    }
+
+    suspend fun createAdminArea(nombre: String, directorId: Long?, token: String): AdminAreaRemote {
+        val payload = JSONObject().put("nombre", nombre)
+        directorId?.let { payload.put("directorId", it) }
+        val response = MobileApiClient.postJson("/admin/areas", payload, token)
+        return AdminAreaRemote(
+            id = response.optLong("id"),
+            nombre = response.optString("nombre"),
+            director = response.optString("director")
+        )
+    }
+
+    suspend fun updateAdminAreaDirector(areaId: Long, directorId: Long, token: String): AdminAreaRemote {
+        val payload = JSONObject().put("directorId", directorId)
+        val response = MobileApiClient.putJson("/admin/areas/$areaId/director", payload, token)
+        return AdminAreaRemote(
+            id = response.optLong("id"),
+            nombre = response.optString("nombre"),
+            director = response.optString("director")
+        )
+    }
+
     private fun mapDirectorDetail(response: JSONObject): DirectorRequestDetailRemote {
         return DirectorRequestDetailRemote(
             id = response.optLong("id"),
