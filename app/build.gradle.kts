@@ -19,6 +19,10 @@ val mobileApiBaseUrl = localProperties
     .getProperty("mobile.api.baseUrl")
     ?: "http://10.0.2.2:8080"
 
+val mobileApiDeviceBaseUrl = localProperties
+    .getProperty("mobile.api.deviceBaseUrl")
+    ?: mobileApiBaseUrl
+
 android {
     namespace = "com.example.integradora_appmovil"
     compileSdk = 36
@@ -30,9 +34,20 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        buildConfigField("String", "MOBILE_API_BASE_URL", "\"$mobileApiBaseUrl\"")
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "target"
+
+    productFlavors {
+        create("emulator") {
+            dimension = "target"
+            buildConfigField("String", "MOBILE_API_BASE_URL", "\"http://10.0.2.2:8080\"")
+        }
+        create("device") {
+            dimension = "target"
+            buildConfigField("String", "MOBILE_API_BASE_URL", "\"$mobileApiDeviceBaseUrl\"")
+        }
     }
 
     buildTypes {
