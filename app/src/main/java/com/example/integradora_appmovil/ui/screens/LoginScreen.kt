@@ -127,17 +127,6 @@ fun LoginScreen(
                 errorTextColor = Color.White
             )
         )
-        if (isEmailInvalid) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.ErrorOutline, "", tint = ErrorRed, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Ingresa un correo válido (.edu.mx)", color = ErrorRed, fontSize = 12.sp)
-            }
-        }
-
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(

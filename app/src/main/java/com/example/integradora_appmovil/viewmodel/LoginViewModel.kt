@@ -34,11 +34,7 @@ class LoginViewModel(
     fun onEmailChange(newValue: String) {
         email = newValue
         if (errorMessage.isNotEmpty()) errorMessage = ""
-        val normalizedValue = newValue.trim().lowercase()
-        isEmailInvalid = normalizedValue.isNotEmpty() &&
-                !normalizedValue.matches(
-                    Regex("^[^\\s@]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$")
-                )
+        isEmailInvalid = false
     }
 
     fun onPasswordChange(newValue: String) {
@@ -49,7 +45,6 @@ class LoginViewModel(
     val canSubmit: Boolean
         get() = email.isNotEmpty() &&
                 password.isNotEmpty() &&
-                !isEmailInvalid &&
                 !isPasswordInvalid
 
     fun login(onSuccess: () -> Unit) {

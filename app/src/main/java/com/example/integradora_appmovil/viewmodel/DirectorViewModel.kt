@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.integradora_appmovil.model.AuthSession
 import com.example.integradora_appmovil.model.SessionManager
 import com.example.integradora_appmovil.network.ApiException
+import com.example.integradora_appmovil.network.BinaryResponse
 import com.example.integradora_appmovil.repository.DirectorRequestDetailRemote
 import com.example.integradora_appmovil.repository.DirectorRequestRemote
 import com.example.integradora_appmovil.repository.UserRepository
@@ -120,6 +121,29 @@ class DirectorViewModel(
                 detailErrorMessage = "No se pudo actualizar la solicitud"
             } finally {
                 isDetailLoading = false
+            }
+        }
+    }
+
+    fun downloadSelectedAttachment(
+        onSuccess: (BinaryResponse) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val session = currentSession ?: return
+        val request = selectedRequest ?: return
+        if (!request.hasPdf) {
+            onError("No existe comprobante adjunto")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val file = repository.downloadDirectorRequestPdf(session.correo, request.id.toLong(), session.token)
+                onSuccess(file)
+            } catch (e: ApiException) {
+                onError(e.message)
+            } catch (_: Exception) {
+                onError("No se pudo descargar el comprobante")
             }
         }
     }

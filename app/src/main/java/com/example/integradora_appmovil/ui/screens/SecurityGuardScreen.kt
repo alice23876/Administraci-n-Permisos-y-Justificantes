@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.text.KeyboardOptions
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -57,6 +59,8 @@ fun SecurityGuardScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val folioText = viewModel.folioText
+    val folioPrefix = viewModel.folioPrefix
+    val manualFolioDigits = viewModel.manualFolioDigits
     val showSuccessDialog = viewModel.showSuccessDialog
     val isFormValid = viewModel.isFormValid
     val isLoading = viewModel.isLoading
@@ -264,19 +268,41 @@ fun SecurityGuardScreen(
                             color = Color.Gray,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        OutlinedTextField(
-                            value = folioText,
-                            onValueChange = viewModel::onFolioChange,
-                            placeholder = { Text("EJ: PS-2026-0801", fontSize = 14.sp ) },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFFEEEEEE),
-                                unfocusedContainerColor = Color(0xFFEEEEEE)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFEEEEEE),
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text(
+                                    text = folioPrefix,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 17.dp),
+                                    color = Color.DarkGray,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            OutlinedTextField(
+                                value = manualFolioDigits,
+                                onValueChange = viewModel::onFolioChange,
+                                placeholder = { Text("0001", fontSize = 14.sp) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFFEEEEEE),
+                                    unfocusedContainerColor = Color(0xFFEEEEEE)
+                                )
                             )
-                        )
+                        }
                     Text(
-                        "El folio se encuentra debajo del QR en el pase del empleado.",
+                        "Solo captura los 4 dígitos finales del folio del pase.",
                             fontSize = 10.sp,
                             color = Color.DarkGray,
                             textAlign = TextAlign.Start,

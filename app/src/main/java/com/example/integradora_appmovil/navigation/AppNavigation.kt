@@ -1,6 +1,7 @@
 package com.example.integradora_appmovil.navigation
 
 import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -9,6 +10,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import com.example.integradora_appmovil.model.SessionManager
 import com.example.integradora_appmovil.ui.screens.*
+import com.example.integradora_appmovil.util.PdfFileHandler
 import com.example.integradora_appmovil.viewmodel.LoginViewModel
 import com.example.integradora_appmovil.viewmodel.RecoverPasswordViewModel
 import com.example.integradora_appmovil.viewmodel.RegisterViewModel
@@ -138,6 +140,7 @@ fun AppNavigation() {
 
         // HISTORIAL DE SOLICITUDES
         composable(Routes.TEACHER_HISTORY) {
+            val context = LocalContext.current
             val history by teacherViewModel.historyData.collectAsState()
             val isHistoryLoading by teacherViewModel.isHistoryLoading.collectAsState()
             val historyError by teacherViewModel.historyError.collectAsState()
@@ -165,7 +168,17 @@ fun AppNavigation() {
                 selectedQr = selectedQr,
                 isQrLoading = isQrLoading,
                 qrError = qrError,
-                onDismissQr = { teacherViewModel.clearQr() }
+                onDismissQr = { teacherViewModel.clearQr() },
+                onDownloadAttachment = {
+                    teacherViewModel.downloadSelectedAttachment(
+                        onSuccess = { file ->
+                            PdfFileHandler.openPdf(context, file.fileName, file.bytes, file.contentType)
+                        },
+                        onError = { message ->
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    )
+                }
             )
         }
 

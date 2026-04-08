@@ -10,10 +10,22 @@ import com.example.integradora_appmovil.network.ApiException
 import com.example.integradora_appmovil.repository.GuardFolioValidationRemote
 import com.example.integradora_appmovil.repository.UserRepository
 import kotlinx.coroutines.launch
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 
 class SecurityGuardViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
+    private val monthFormatter = DateTimeFormatter.ofPattern("MM")
+
+    var manualFolioDigits by mutableStateOf("")
+        private set
+
+    val folioPrefix: String
+        get() {
+            val currentMonth = YearMonth.now()
+            return "PSE-${currentMonth.year}-${currentMonth.format(monthFormatter)}-"
+        }
 
     var folioText by mutableStateOf("")
         private set
@@ -34,7 +46,9 @@ class SecurityGuardViewModel(
         get() = folioText.trim().isNotEmpty()
 
     fun onFolioChange(newFolio: String) {
-        folioText = newFolio
+        val digits = newFolio.filter { it.isDigit() }.take(4)
+        manualFolioDigits = digits
+        folioText = if (digits.isEmpty()) "" else folioPrefix + digits
         if (errorMessage.isNotEmpty()) {
             errorMessage = ""
         }
@@ -42,6 +56,7 @@ class SecurityGuardViewModel(
 
     fun onQrScanned(qrData: String) {
         folioText = qrData
+        manualFolioDigits = ""
         if (errorMessage.isNotEmpty()) {
             errorMessage = ""
         }
@@ -78,6 +93,7 @@ class SecurityGuardViewModel(
     fun dismissSuccessDialog() {
         showSuccessDialog = false
         folioText = ""
+        manualFolioDigits = ""
         validationResult = null
     }
 }

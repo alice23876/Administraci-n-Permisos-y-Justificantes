@@ -1,6 +1,7 @@
 package com.example.integradora_appmovil.repository
 
 import com.example.integradora_appmovil.model.AuthSession
+import com.example.integradora_appmovil.network.BinaryResponse
 import com.example.integradora_appmovil.network.MobileApiClient
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -230,6 +231,14 @@ class UserRepository {
         )
     }
 
+    suspend fun downloadTeacherRequestPdf(correo: String, requestId: Long, token: String): BinaryResponse {
+        val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
+        return MobileApiClient.getBinary(
+            path = "/solicitudes/docente/$requestId/comprobante?correo=$encodedCorreo",
+            token = token
+        )
+    }
+
     suspend fun validateGuardFolio(folio: String, token: String): GuardFolioValidationRemote {
         val payload = JSONObject().put("folio", folio.trim())
         val response = MobileApiClient.postJson(
@@ -289,6 +298,14 @@ class UserRepository {
             token = token
         )
         return mapDirectorDetail(response)
+    }
+
+    suspend fun downloadDirectorRequestPdf(correo: String, requestId: Long, token: String): BinaryResponse {
+        val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
+        return MobileApiClient.getBinary(
+            path = "/solicitudes/director/$requestId/comprobante?correo=$encodedCorreo",
+            token = token
+        )
     }
 
     suspend fun updateDirectorRequestStatus(

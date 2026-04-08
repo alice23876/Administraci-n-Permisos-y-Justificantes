@@ -1,6 +1,7 @@
 package com.example.integradora_appmovil.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,6 +47,7 @@ import com.example.integradora_appmovil.ui.theme.GreenAction
 import com.example.integradora_appmovil.ui.theme.InstitutionGreen
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.DisabledGray
+import com.example.integradora_appmovil.util.PdfFileHandler
 
 
 // --- 1. MODELOS DE DATOS ---
@@ -672,7 +675,8 @@ fun HistoryScreen(
     selectedQr: TeacherQrState? = null,
     isQrLoading: Boolean = false,
     qrError: String = "",
-    onDismissQr: () -> Unit = {}
+    onDismissQr: () -> Unit = {},
+    onDownloadAttachment: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -732,7 +736,8 @@ fun HistoryScreen(
             request = selectedDetail,
             isLoading = isDetailLoading,
             errorMessage = detailError,
-            onDismiss = onDismissDetail
+            onDismiss = onDismissDetail,
+            onDownloadAttachment = onDownloadAttachment
         )
     }
 
@@ -751,7 +756,8 @@ fun TeacherRequestDetailDialog(
     request: TeacherRequestDetailState?,
     isLoading: Boolean,
     errorMessage: String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onDownloadAttachment: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -833,6 +839,15 @@ fun TeacherRequestDetailDialog(
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    OutlinedButton(
+                                        onClick = onDownloadAttachment,
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Descargar")
+                                    }
                                 }
                             }
                         }

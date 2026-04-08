@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.integradora_appmovil.model.AuthSession
 import com.example.integradora_appmovil.model.SessionManager
 import com.example.integradora_appmovil.network.ApiException
+import com.example.integradora_appmovil.network.BinaryResponse
 import com.example.integradora_appmovil.repository.TeacherQrRemote
 import com.example.integradora_appmovil.repository.TeacherRequestDetailRemote
 import com.example.integradora_appmovil.repository.TeacherRequestRemote
@@ -141,6 +142,29 @@ class TeacherViewModel(
         _selectedQr.value = null
         _isQrLoading.value = false
         _qrError.value = ""
+    }
+
+    fun downloadSelectedAttachment(
+        onSuccess: (BinaryResponse) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val session = currentSession ?: return
+        val detail = _selectedRequestDetail.value ?: return
+        if (!detail.tieneComprobante) {
+            onError("No existe comprobante adjunto")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val file = repository.downloadTeacherRequestPdf(session.correo, detail.id, session.token)
+                onSuccess(file)
+            } catch (e: ApiException) {
+                onError(e.message)
+            } catch (_: Exception) {
+                onError("No se pudo descargar el comprobante")
+            }
+        }
     }
 
     fun logout() {

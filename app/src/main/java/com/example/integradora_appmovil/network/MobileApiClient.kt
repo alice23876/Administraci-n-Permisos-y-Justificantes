@@ -17,6 +17,12 @@ class ApiException(
     override val message: String
 ) : Exception(message)
 
+data class BinaryResponse(
+    val bytes: ByteArray,
+    val contentType: String,
+    val fileName: String
+)
+
 object MobileApiClient {
     val BASE_URL: String = BuildConfig.MOBILE_API_BASE_URL.trimEnd('/')
 
@@ -60,6 +66,34 @@ object MobileApiClient {
                 throw ApiException(connection.responseCode, extractErrorMessage(responseBody))
             }
             JSONObject(responseBody.ifBlank { "{}" })
+        }
+
+    suspend fun getBinary(path: String, token: String? = null): BinaryResponse =
+        withContext(Dispatchers.IO) {
+            val connection = openConnection(path, "GET", token)
+
+            if (connection.responseCode !in 200..299) {
+                val responseBody = readResponseBody(connection)
+                throw ApiException(connection.responseCode, extractErrorMessage(responseBody))
+            }
+
+            val bytes = connection.inputStream.use(InputStream::readBytes)
+            val contentDisposition = connection.getHeaderField("content-disposition").orEmpty()
+            val filenameStarMatch = Regex("filename\\*=UTF-8''([^;]+)", RegexOption.IGNORE_CASE)
+                .find(contentDisposition)
+                ?.groupValues
+                ?.getOrNull(1)
+            val filenameMatch = Regex("filename=\"?([^\";]+)\"?", RegexOption.IGNORE_CASE)
+                .find(contentDisposition)
+                ?.groupValues
+                ?.getOrNull(1)
+            val rawFilename = filenameStarMatch ?: filenameMatch ?: "comprobante.pdf"
+
+            BinaryResponse(
+                bytes = bytes,
+                contentType = connection.contentType ?: "application/pdf",
+                fileName = decodeFilename(rawFilename)
+            )
         }
 
     private fun openConnection(path: String, method: String, token: String?): HttpURLConnection {
@@ -111,4 +145,8 @@ object MobileApiClient {
                 .ifBlank { "No se pudo completar la solicitud" }
         }.getOrDefault("No se pudo completar la solicitud")
     }
+
+    private fun decodeFilename(rawFilename: String): String =
+        runCatching { java.net.URLDecoder.decode(rawFilename, Charsets.UTF_8.name()) }
+            .getOrDefault(rawFilename)
 }

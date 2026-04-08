@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Group
@@ -38,7 +39,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,6 +55,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -84,6 +89,41 @@ enum class SuperAdminNav {
     HOME, USERS, AREAS, STATUSES
 }
 
+private val availableRoles = listOf(
+    "Super administrador",
+    "Director de area",
+    "Recursos humanos",
+    "Guardia",
+    "Docente"
+)
+
+private val availableCreateRoles = listOf(
+    "Super administrador",
+    "Recursos humanos",
+    "Guardia"
+)
+
+private fun normalizeValue(value: String): String =
+    value.lowercase()
+        .normalize()
+
+private fun String.normalize(): String = java.text.Normalizer.normalize(this.trim(), java.text.Normalizer.Form.NFD)
+    .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+
+private fun validateAdminName(value: String) = value.trim().length >= 5
+private fun validateAdminEmail(value: String) =
+    Regex("^[^\\s@]+@(?:[a-z0-9-]+\\.)*[a-z0-9-]+\\.edu\\.mx$", RegexOption.IGNORE_CASE)
+        .matches(value.trim())
+private fun validateAdminPassword(value: String) =
+    value.length >= 8 && value.any(Char::isUpperCase) && value.any(Char::isDigit) && value.any { it == '$' || it == '@' || it == '#' }
+private fun validateAreaName(value: String) =
+    value.trim().length >= 2 && value.trim().length <= 100 && Regex("^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9 ]+$").matches(value.trim())
+
+private fun isMutedDepartment(value: String): Boolean {
+    val normalized = normalizeValue(value)
+    return normalized == "administrador" || normalized == "guardia de caseta" || normalized == "rh"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SuperAdminScreen(
@@ -96,12 +136,30 @@ fun SuperAdminScreen(
     var currentScreen by remember { mutableStateOf(SuperAdminNav.HOME) }
     var searchTerm by remember { mutableStateOf("") }
     var selectedUser by remember { mutableStateOf<AdminUserRemote?>(null) }
+    var createUserOpen by remember { mutableStateOf(false) }
+    var createAreaOpen by remember { mutableStateOf(false) }
+    var editingUserRole by remember { mutableStateOf<AdminUserRemote?>(null) }
+    var editingUserArea by remember { mutableStateOf<AdminUserRemote?>(null) }
+    var editingAreaDirector by remember { mutableStateOf<AdminAreaRemote?>(null) }
+    var selectedRole by remember { mutableStateOf("") }
+    var selectedAreaId by remember { mutableStateOf<Long?>(null) }
+    var selectedDirectorId by remember { mutableStateOf<Long?>(null) }
+    var selectedCreateAreaDirectorId by remember { mutableStateOf<Long?>(null) }
+    var newUserName by remember { mutableStateOf("") }
+    var newUserEmail by remember { mutableStateOf("") }
+    var newUserPassword by remember { mutableStateOf("") }
+    var newUserConfirmPassword by remember { mutableStateOf("") }
+    var newUserRole by remember { mutableStateOf("") }
+    var newAreaName by remember { mutableStateOf("") }
 
     val users = viewModel.users
     val areas = viewModel.areas
     val isLoading = viewModel.isLoading
     val errorMessage = viewModel.errorMessage
     val updatingUserId = viewModel.updatingUserId
+    val savingArea = viewModel.savingArea
+    val savingUser = viewModel.savingUser
+    val successMessage = viewModel.successMessage
 
     LaunchedEffect(session?.correo, session?.token) {
         viewModel.bindSession(session)
@@ -119,6 +177,59 @@ fun SuperAdminScreen(
                         it.departamento.lowercase().contains(query)
             }
         }
+    }
+
+    val roleOptions = remember(editingUserRole) {
+        availableRoles.filter { normalizeValue(it) != normalizeValue(editingUserRole?.rol ?: "") }
+    }
+    val areaOptions = remember(areas, editingUserArea) {
+        areas.filter { area -> normalizeValue(area.nombre) != normalizeValue(editingUserArea?.departamento ?: "") }
+    }
+    val directorOptions = remember(users, editingAreaDirector) {
+        users.filter { user ->
+            !user.correo.equals("admin", ignoreCase = true) &&
+                normalizeValue(user.nombre) != normalizeValue(editingAreaDirector?.director ?: "")
+        }
+    }
+    val canCreateUser = validateAdminName(newUserName) &&
+        validateAdminEmail(newUserEmail) &&
+        validateAdminPassword(newUserPassword) &&
+        newUserConfirmPassword == newUserPassword &&
+        newUserConfirmPassword.isNotBlank() &&
+        newUserRole.isNotBlank()
+    val canCreateArea = validateAreaName(newAreaName) &&
+        areas.none { normalizeValue(it.nombre) == normalizeValue(newAreaName) }
+    val canSaveRole = editingUserRole != null &&
+        selectedRole.isNotBlank() &&
+        normalizeValue(selectedRole) != normalizeValue(editingUserRole?.rol ?: "")
+    val currentAreaId = remember(editingUserArea, areas) {
+        areas.firstOrNull { normalizeValue(it.nombre) == normalizeValue(editingUserArea?.departamento ?: "") }?.id
+    }
+    val currentDirectorId = remember(editingAreaDirector, users) {
+        users.firstOrNull { normalizeValue(it.nombre) == normalizeValue(editingAreaDirector?.director ?: "") }?.id
+    }
+    val canSaveArea = editingUserArea != null && selectedAreaId != null && selectedAreaId != currentAreaId
+    val canSaveDirector = editingAreaDirector != null && selectedDirectorId != null && selectedDirectorId != currentDirectorId
+
+    fun closeUserDialogs() {
+        createUserOpen = false
+        editingUserRole = null
+        editingUserArea = null
+        selectedRole = ""
+        selectedAreaId = null
+        newUserName = ""
+        newUserEmail = ""
+        newUserPassword = ""
+        newUserConfirmPassword = ""
+        newUserRole = ""
+    }
+
+    fun closeAreaDialogs() {
+        createAreaOpen = false
+        editingAreaDirector = null
+        selectedDirectorId = null
+        selectedCreateAreaDirectorId = null
+        newAreaName = ""
     }
 
     ModalNavigationDrawer(
@@ -208,16 +319,32 @@ fun SuperAdminScreen(
                             updatingUserId = updatingUserId,
                             onRetry = { viewModel.refreshAll() },
                             onToggleStatus = { user, activo -> viewModel.updateUserStatus(user, activo) },
-                            onViewDetails = { selectedUser = it }
+                            onViewDetails = { selectedUser = it },
+                            onCreateUser = { createUserOpen = true },
+                            onChangeRole = {
+                                editingUserRole = it
+                                selectedRole = it.rol
+                            },
+                            onAssignArea = {
+                                editingUserArea = it
+                                selectedAreaId = areas.firstOrNull { area -> normalizeValue(area.nombre) == normalizeValue(it.departamento) }?.id
+                            },
+                            currentUserCorreo = session?.correo.orEmpty()
                         )
                     }
 
                     SuperAdminNav.AREAS -> {
                         SuperAdminAreasView(
+                            users = users.toList(),
                             areas = areas.toList(),
                             isLoading = isLoading,
                             errorMessage = errorMessage,
-                            onRetry = { viewModel.refreshAll() }
+                            onRetry = { viewModel.refreshAll() },
+                            onCreateArea = { createAreaOpen = true },
+                            onAssignDirector = {
+                                editingAreaDirector = it
+                                selectedDirectorId = users.firstOrNull { user -> normalizeValue(user.nombre) == normalizeValue(it.director) }?.id
+                            }
                         )
                     }
 
@@ -241,6 +368,107 @@ fun SuperAdminScreen(
         AdminUserDetailDialog(
             user = user,
             onDismiss = { selectedUser = null }
+        )
+    }
+
+    if (createUserOpen) {
+        AdminCreateUserDialog(
+            nombre = newUserName,
+            correo = newUserEmail,
+            password = newUserPassword,
+            confirmPassword = newUserConfirmPassword,
+            role = newUserRole,
+            saving = savingUser,
+            canSave = canCreateUser,
+            onNameChange = { newUserName = it },
+            onEmailChange = { newUserEmail = it },
+            onPasswordChange = { newUserPassword = it },
+            onConfirmPasswordChange = { newUserConfirmPassword = it },
+            onRoleChange = { newUserRole = it },
+            onDismiss = { closeUserDialogs() },
+            onSave = {
+                viewModel.createUser(
+                    nombre = newUserName.trim(),
+                    correo = newUserEmail.trim(),
+                    contraseña = newUserPassword,
+                    rol = newUserRole
+                ) { closeUserDialogs() }
+            }
+        )
+    }
+
+    editingUserRole?.let { user ->
+        AdminChangeRoleDialog(
+            user = user,
+            roleOptions = roleOptions,
+            selectedRole = selectedRole,
+            saving = updatingUserId == user.id,
+            canSave = canSaveRole,
+            onRoleChange = { selectedRole = it },
+            onDismiss = { closeUserDialogs() },
+            onSave = {
+                viewModel.updateUserRole(user.id, selectedRole) { closeUserDialogs() }
+            }
+        )
+    }
+
+    editingUserArea?.let { user ->
+        AdminAssignAreaDialog(
+            user = user,
+            areas = areaOptions,
+            selectedAreaId = selectedAreaId,
+            saving = updatingUserId == user.id,
+            canSave = canSaveArea,
+            onAreaChange = { selectedAreaId = it },
+            onDismiss = { closeUserDialogs() },
+            onSave = {
+                selectedAreaId?.let { areaId ->
+                    viewModel.updateUserArea(user.id, areaId) { closeUserDialogs() }
+                }
+            }
+        )
+    }
+
+    if (createAreaOpen) {
+        AdminCreateAreaDialog(
+            areaName = newAreaName,
+            users = users.filterNot { it.correo.equals("admin", ignoreCase = true) },
+            selectedDirectorId = selectedCreateAreaDirectorId,
+            saving = savingArea,
+            canSave = canCreateArea,
+            onAreaNameChange = { newAreaName = it },
+            onDirectorChange = { selectedCreateAreaDirectorId = it },
+            onDismiss = { closeAreaDialogs() },
+            onSave = {
+                viewModel.createArea(newAreaName.trim(), selectedCreateAreaDirectorId) { closeAreaDialogs() }
+            }
+        )
+    }
+
+    editingAreaDirector?.let { area ->
+        AdminAssignDirectorDialog(
+            area = area,
+            users = directorOptions,
+            selectedDirectorId = selectedDirectorId,
+            saving = savingArea,
+            canSave = canSaveDirector,
+            onDirectorChange = { selectedDirectorId = it },
+            onDismiss = { closeAreaDialogs() },
+            onSave = {
+                selectedDirectorId?.let { userId ->
+                    viewModel.assignDirector(area.id, userId) { closeAreaDialogs() }
+                }
+            }
+        )
+    }
+
+    if (successMessage.isNotBlank()) {
+        AdminSuccessDialog(
+            message = successMessage,
+            onDismiss = {
+                viewModel.clearMessages()
+                currentScreen = SuperAdminNav.HOME
+            }
         )
     }
 }
@@ -333,7 +561,11 @@ private fun SuperAdminUsersView(
     updatingUserId: Long?,
     onRetry: () -> Unit,
     onToggleStatus: (AdminUserRemote, Boolean) -> Unit,
-    onViewDetails: (AdminUserRemote) -> Unit
+    onViewDetails: (AdminUserRemote) -> Unit,
+    onCreateUser: () -> Unit,
+    onChangeRole: (AdminUserRemote) -> Unit,
+    onAssignArea: (AdminUserRemote) -> Unit,
+    currentUserCorreo: String
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Usuarios", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Gray)
@@ -352,6 +584,18 @@ private fun SuperAdminUsersView(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
         )
         Spacer(modifier = Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Button(
+                onClick = onCreateUser,
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Crear usuario")
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         when {
             isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = SuccessGreen)
@@ -365,7 +609,10 @@ private fun SuperAdminUsersView(
                         isUpdating = updatingUserId == user.id,
                         showToggle = true,
                         onToggleStatus = onToggleStatus,
-                        onViewDetails = onViewDetails
+                        onViewDetails = onViewDetails,
+                        onChangeRole = onChangeRole,
+                        onAssignArea = onAssignArea,
+                        currentUserCorreo = currentUserCorreo
                     )
                 }
             }
@@ -375,14 +622,29 @@ private fun SuperAdminUsersView(
 
 @Composable
 private fun SuperAdminAreasView(
+    users: List<AdminUserRemote>,
     areas: List<AdminAreaRemote>,
     isLoading: Boolean,
     errorMessage: String,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onCreateArea: () -> Unit,
+    onAssignDirector: (AdminAreaRemote) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Áreas", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Button(
+                onClick = onCreateArea,
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Nueva área")
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         when {
             isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = SuccessGreen)
@@ -405,6 +667,18 @@ private fun SuperAdminAreasView(
                                 fontSize = 14.sp,
                                 color = Color.Gray
                             )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Button(
+                                onClick = { onAssignDirector(area) },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFF0F0F0),
+                                    contentColor = Color(0xFF6B6B6B)
+                                )
+                            ) {
+                                Text(if (area.director.isBlank()) "Asignar director" else "Cambiar director", fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -453,7 +727,10 @@ private fun AdminUserCard(
     isUpdating: Boolean,
     showToggle: Boolean,
     onToggleStatus: (AdminUserRemote, Boolean) -> Unit,
-    onViewDetails: (AdminUserRemote) -> Unit
+    onViewDetails: (AdminUserRemote) -> Unit,
+    onChangeRole: (AdminUserRemote) -> Unit = {},
+    onAssignArea: (AdminUserRemote) -> Unit = {},
+    currentUserCorreo: String = ""
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -493,7 +770,11 @@ private fun AdminUserCard(
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Rol: ${user.rol.ifBlank { "Sin rol" }}", fontSize = 15.sp, color = Color.Gray)
-                Text("Área: ${user.departamento.ifBlank { "Sin asignar" }}", fontSize = 15.sp, color = Color.Gray)
+                Text(
+                    "Área: ${user.departamento.ifBlank { "Sin asignar" }}",
+                    fontSize = 15.sp,
+                    color = if (isMutedDepartment(user.departamento)) Color(0xFF9B9B9B) else Color.Gray
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text("Correo:", fontSize = 14.sp, color = Color.Gray)
@@ -511,6 +792,387 @@ private fun AdminUserCard(
                 Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Ver detalles", fontWeight = FontWeight.SemiBold)
+            }
+            val canEdit = !user.correo.equals("admin", ignoreCase = true) && !user.correo.equals(currentUserCorreo, ignoreCase = true)
+            if (canEdit) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { onChangeRole(user) },
+                        modifier = Modifier.weight(1f).height(40.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0F0F0), contentColor = Color(0xFF6B6B6B))
+                    ) {
+                        Text("Cambiar rol", fontSize = 12.sp)
+                    }
+                    if (normalizeValue(user.rol).contains("docente")) {
+                        Button(
+                            onClick = { onAssignArea(user) },
+                            modifier = Modifier.weight(1f).height(40.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0F0F0), contentColor = Color(0xFF6B6B6B))
+                        ) {
+                            Text(if (user.departamento.isBlank()) "Asignar área" else "Cambiar área", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdminChangeRoleDialog(
+    user: AdminUserRemote,
+    roleOptions: List<String>,
+    selectedRole: String,
+    saving: Boolean,
+    canSave: Boolean,
+    onRoleChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Cambiar rol - ${user.nombre}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray) }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+                Text("Rol actual:", color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(user.rol, fontSize = 15.sp, color = Color(0xFF4A4A4A))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Nuevo rol:", color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = selectedRole,
+                        onValueChange = {},
+                        readOnly = true,
+                        placeholder = { Text("Selecciona un rol") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFFF4F4F4),
+                            unfocusedContainerColor = Color(0xFFF4F4F4)
+                        )
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(text = { Text(user.rol) }, onClick = {}, enabled = false)
+                        roleOptions.forEach { role ->
+                            DropdownMenuItem(
+                                text = { Text(role) },
+                                onClick = {
+                                    onRoleChange(role)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancelar") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = onSave,
+                        enabled = canSave && !saving,
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
+                    ) {
+                        Text(if (saving) "Guardando..." else "Guardar cambios")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdminAssignAreaDialog(
+    user: AdminUserRemote,
+    areas: List<AdminAreaRemote>,
+    selectedAreaId: Long?,
+    saving: Boolean,
+    canSave: Boolean,
+    onAreaChange: (Long) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("${if (user.departamento.isBlank()) "Asignar área" else "Cambiar área"} - ${user.nombre}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray) }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+                Text("Seleccionar área:", color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = areas.firstOrNull { it.id == selectedAreaId }?.nombre.orEmpty(),
+                        onValueChange = {},
+                        readOnly = true,
+                        placeholder = { Text(if (areas.isEmpty()) "Sin áreas registradas" else "Selecciona un área") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        enabled = areas.isNotEmpty(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFFF4F4F4),
+                            unfocusedContainerColor = Color(0xFFF4F4F4)
+                        )
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        areas.forEach { area ->
+                            DropdownMenuItem(
+                                text = { Text(area.nombre) },
+                                onClick = {
+                                    onAreaChange(area.id)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancelar") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onSave, enabled = canSave && !saving, colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)) {
+                        Text(if (saving) "Asignando..." else "Asignar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdminCreateUserDialog(
+    nombre: String,
+    correo: String,
+    password: String,
+    confirmPassword: String,
+    role: String,
+    saving: Boolean,
+    canSave: Boolean,
+    onNameChange: (String) -> Unit,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onRoleChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Crear usuario", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray) }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+                OutlinedTextField(value = nombre, onValueChange = onNameChange, label = { Text("Nombre completo") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = correo, onValueChange = onEmailChange, label = { Text("Correo electrónico") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = password, onValueChange = onPasswordChange, label = { Text("Contraseña") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = confirmPassword, onValueChange = onConfirmPasswordChange, label = { Text("Verificar contraseña") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = role,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Rol") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        availableCreateRoles.forEach { item ->
+                            DropdownMenuItem(text = { Text(item) }, onClick = {
+                                onRoleChange(item)
+                                expanded = false
+                            })
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancelar") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onSave, enabled = canSave && !saving, colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)) {
+                        Text(if (saving) "Creando..." else "Crear usuario")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminCreateAreaDialog(
+    areaName: String,
+    users: List<AdminUserRemote>,
+    selectedDirectorId: Long?,
+    saving: Boolean,
+    canSave: Boolean,
+    onAreaNameChange: (String) -> Unit,
+    onDirectorChange: (Long?) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Nueva área", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray) }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+                OutlinedTextField(
+                    value = areaName,
+                    onValueChange = { next ->
+                        val sanitized = next.replace(Regex("[^A-Za-zÁÉÍÓÚáéíóúÑñ0-9 ]"), "").take(100)
+                        onAreaNameChange(sanitized)
+                    },
+                    label = { Text("Nombre del área") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Asignar director:", color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = users.firstOrNull { it.id == selectedDirectorId }?.let { "${it.nombre} - ${it.rol}" }.orEmpty(),
+                        onValueChange = {},
+                        readOnly = true,
+                        placeholder = { Text("Opcional") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFFF4F4F4),
+                            unfocusedContainerColor = Color(0xFFF4F4F4)
+                        )
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Sin asignar") },
+                            onClick = {
+                                onDirectorChange(null)
+                                expanded = false
+                            }
+                        )
+                        users.forEach { user ->
+                            DropdownMenuItem(
+                                text = { Text("${user.nombre} - ${user.rol}") },
+                                onClick = {
+                                    onDirectorChange(user.id)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancelar") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onSave, enabled = canSave && !saving, colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)) {
+                        Text(if (saving) "Creando..." else "Crear área")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdminAssignDirectorDialog(
+    area: AdminAreaRemote,
+    users: List<AdminUserRemote>,
+    selectedDirectorId: Long?,
+    saving: Boolean,
+    canSave: Boolean,
+    onDirectorChange: (Long) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("${if (area.director.isBlank()) "Asignar director" else "Cambiar director"} - ${area.nombre.lowercase()}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.Gray) }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFE4E4E4))
+                Text("Seleccionar usuario:", color = Color.Gray, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = users.firstOrNull { it.id == selectedDirectorId }?.let { "${it.nombre} - ${it.rol}" }.orEmpty(),
+                        onValueChange = {},
+                        readOnly = true,
+                        placeholder = { Text("Seleccionar usuario") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        if (area.director.isNotBlank()) {
+                            DropdownMenuItem(text = { Text("${area.director} - Director de área") }, onClick = {}, enabled = false)
+                        }
+                        users.forEach { user ->
+                            DropdownMenuItem(
+                                text = { Text("${user.nombre} - ${user.rol}") },
+                                onClick = {
+                                    onDirectorChange(user.id)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancelar") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onSave, enabled = canSave && !saving, colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)) {
+                        Text(if (saving) "Asignando..." else "Asignar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminSuccessDialog(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(message, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF5A5A5A))
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)) {
+                    Text("Ir a Inicio")
+                }
             }
         }
     }

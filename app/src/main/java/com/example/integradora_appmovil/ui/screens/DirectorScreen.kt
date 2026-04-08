@@ -1,5 +1,6 @@
 package com.example.integradora_appmovil.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -26,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.integradora_appmovil.model.AuthSession
 import com.example.integradora_appmovil.ui.theme.*
+import com.example.integradora_appmovil.util.PdfFileHandler
 import com.example.integradora_appmovil.viewmodel.DirectorViewModel
 import kotlinx.coroutines.launch
 
@@ -60,6 +63,7 @@ fun DirectorScreen(
     session: AuthSession?,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentScreen by remember { mutableStateOf(DirectorNav.HOME) }
@@ -472,9 +476,20 @@ fun RequestDetailView(
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
-                        Text("Disponible en versión web", fontSize = 12.sp, color = Color.Gray)
+                        Text("Toca descargar para abrir el PDF", fontSize = 12.sp, color = Color.Gray)
                     }
-                    IconButton(onClick = { }) {
+                    IconButton(
+                        onClick = {
+                            viewModel.downloadSelectedAttachment(
+                                onSuccess = { file ->
+                                    PdfFileHandler.openPdf(context, file.fileName, file.bytes, file.contentType)
+                                },
+                                onError = { message ->
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        }
+                    ) {
                         Icon(Icons.Default.Download, contentDescription = null, tint = BlueAction)
                     }
                 }
