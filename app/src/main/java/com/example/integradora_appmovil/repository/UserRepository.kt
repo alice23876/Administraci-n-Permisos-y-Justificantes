@@ -86,7 +86,8 @@ data class AdminUserRemote(
     val correo: String,
     val departamento: String,
     val rol: String,
-    val activo: Boolean
+    val activo: Boolean,
+    val fechaEstado: String = ""
 )
 
 data class AdminAreaRemote(
@@ -340,7 +341,8 @@ class UserRepository {
                         correo = item.optString("correo"),
                         departamento = item.optString("departamento"),
                         rol = item.optString("rol"),
-                        activo = item.optBoolean("activo", false)
+                        activo = item.optBoolean("activo", false),
+                        fechaEstado = ""
                     )
                 )
             }
@@ -381,7 +383,8 @@ class UserRepository {
             correo = response.optString("correo"),
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
-            activo = response.optBoolean("activo", false)
+            activo = response.optBoolean("activo", false),
+            fechaEstado = ""
         )
     }
 
@@ -393,7 +396,8 @@ class UserRepository {
             correo = response.optString("correo"),
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
-            activo = response.optBoolean("activo")
+            activo = response.optBoolean("activo"),
+            fechaEstado = ""
         )
     }
 
@@ -406,7 +410,8 @@ class UserRepository {
             correo = response.optString("correo"),
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
-            activo = response.optBoolean("activo")
+            activo = response.optBoolean("activo"),
+            fechaEstado = ""
         )
     }
 
@@ -419,13 +424,13 @@ class UserRepository {
             correo = response.optString("correo"),
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
-            activo = response.optBoolean("activo")
+            activo = response.optBoolean("activo"),
+            fechaEstado = ""
         )
     }
 
-    suspend fun createAdminArea(nombre: String, directorId: Long?, token: String): AdminAreaRemote {
+    suspend fun createAdminArea(nombre: String, token: String): AdminAreaRemote {
         val payload = JSONObject().put("nombre", nombre)
-        directorId?.let { payload.put("directorId", it) }
         val response = MobileApiClient.postJson("/admin/areas", payload, token)
         return AdminAreaRemote(
             id = response.optLong("id"),
@@ -434,8 +439,8 @@ class UserRepository {
         )
     }
 
-    suspend fun updateAdminAreaDirector(areaId: Long, directorId: Long, token: String): AdminAreaRemote {
-        val payload = JSONObject().put("directorId", directorId)
+    suspend fun updateAdminAreaDirector(areaId: Long, userId: Long, token: String): AdminAreaRemote {
+        val payload = JSONObject().put("userId", userId)
         val response = MobileApiClient.putJson("/admin/areas/$areaId/director", payload, token)
         return AdminAreaRemote(
             id = response.optLong("id"),

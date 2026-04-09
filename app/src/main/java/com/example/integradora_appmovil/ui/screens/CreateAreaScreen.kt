@@ -4,9 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -23,20 +23,13 @@ fun CreateAreaScreen(
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val directors = viewModel.availableDirectors
-
-    LaunchedEffect(Unit) {
-        viewModel.loadDirectors()
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Nueva área", color = Color.White, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Regresar", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = HeaderBlue)
@@ -60,43 +53,6 @@ fun CreateAreaScreen(
                 onValueChange = { viewModel.nombreArea = it },
                 placeholder = "Ej. Física"
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Asignar director:", fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                OutlinedTextField(
-                    value = directors.find { it.id == viewModel.selectedDirectorId }?.let { "${it.nombre} - ${it.rol}" } ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    placeholder = { Text("Seleccionar usuario") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFFF4F4F4),
-                        unfocusedContainerColor = Color(0xFFF4F4F4)
-                    )
-                )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    directors.forEach { director ->
-                        DropdownMenuItem(
-                            text = { Text("${director.nombre} - ${director.rol}") },
-                            onClick = {
-                                viewModel.selectedDirectorId = director.id
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
 
             if (viewModel.errorMessage.isNotEmpty()) {
                 Text(viewModel.errorMessage, color = Color.Red, modifier = Modifier.padding(top = 8.dp))

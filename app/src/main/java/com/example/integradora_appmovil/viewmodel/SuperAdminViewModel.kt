@@ -110,13 +110,13 @@ class SuperAdminViewModel(
         }
     }
 
-    fun createArea(nombre: String, directorId: Long?, onSuccess: () -> Unit = {}) {
+    fun createArea(nombre: String, onSuccess: () -> Unit = {}) {
         val session = currentSession ?: return
         viewModelScope.launch {
             savingArea = true
             errorMessage = ""
             try {
-                repository.createAdminArea(nombre, directorId, session.token)
+                repository.createAdminArea(nombre, session.token)
                 successMessage = "¡Área registrada exitosamente!"
                 refreshAll()
                 onSuccess()

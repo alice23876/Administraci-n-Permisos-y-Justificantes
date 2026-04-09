@@ -36,6 +36,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.*
 import com.example.integradora_appmovil.ui.theme.ErrorRed
 import com.example.integradora_appmovil.ui.theme.HeaderBlue
@@ -99,6 +104,34 @@ data class TeacherQrState(
     val validoPara: String,
     val usosRestantes: Int
 )
+
+private val teacherDisplayDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+private fun isBusinessDay(date: LocalDate): Boolean =
+    date.dayOfWeek.value !in setOf(6, 7)
+
+private fun getAllowedBusinessDates(baseDate: LocalDate = LocalDate.now()): List<LocalDate> {
+    val allowedDates = mutableListOf<LocalDate>()
+    var cursor = baseDate
+
+    while (allowedDates.size < 3) {
+        if (isBusinessDay(cursor)) {
+            allowedDates += cursor
+        }
+        cursor = cursor.minusDays(1)
+    }
+
+    return allowedDates.sorted()
+}
+
+private fun toDatePickerUtcMillis(date: LocalDate): Long =
+    date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun fromDatePickerUtcMillis(utcTimeMillis: Long): LocalDate =
+    Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate()
+
+private fun formatTeacherDisplayDate(date: LocalDate): String =
+    date.format(teacherDisplayDateFormatter)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(showBackground = true)
@@ -232,6 +265,8 @@ fun NewRequestScreen(
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
+    val allowedDates = remember { getAllowedBusinessDates() }
+    val allowedDateKeys = remember(allowedDates) { allowedDates.map(LocalDate::toString).toSet() }
     var selectedDate by remember { mutableStateOf("") }
     var motive by remember { mutableStateOf("") }
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
@@ -242,7 +277,7 @@ fun NewRequestScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? -> selectedPdfUri = uri }
 
-    val isFormValid = selectedDate.isNotEmpty() && motive.length >= 10
+    val isFormValid = selectedDate.isNotEmpty() && motive.trim().length >= 100
 
     Scaffold(
         topBar = {
@@ -269,7 +304,7 @@ fun NewRequestScreen(
                 shape = RoundedCornerShape(8.dp)
             )
 
-            Text("Motivo de la incidencia (Mínimo 10 caracteres) *", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text("Motivo de la incidencia (Mínimo 100 caracteres) *", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             OutlinedTextField(
                 value = motive,
                 onValueChange = { motive = it },
@@ -308,16 +343,12 @@ fun NewRequestScreen(
     }
 
     if (showDatePicker) {
-        val calendar = Calendar.getInstance()
-        val todayMillis = calendar.timeInMillis
-        calendar.add(Calendar.DAY_OF_YEAR, -3) // ← Permite hasta 4 días antes
-        val minMillis = calendar.timeInMillis
-        
         val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = allowedDates.lastOrNull()?.let(::toDatePickerUtcMillis),
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    // Solo permitimos hoy y 4 días anteriores
-                    return utcTimeMillis in minMillis..todayMillis
+                    val selectedLocalDate = fromDatePickerUtcMillis(utcTimeMillis)
+                    return selectedLocalDate.toString() in allowedDateKeys
                 }
             }
         )
@@ -327,9 +358,10 @@ fun NewRequestScreen(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        val cal = Calendar.getInstance()
-                        cal.timeInMillis = it
-                        selectedDate = "${cal.get(Calendar.DAY_OF_MONTH)}/${cal.get(Calendar.MONTH) + 1}/${cal.get(Calendar.YEAR)}"
+                        val selectedLocalDate = fromDatePickerUtcMillis(it)
+                        if (selectedLocalDate.toString() in allowedDateKeys) {
+                            selectedDate = formatTeacherDisplayDate(selectedLocalDate)
+                        }
                     }
                     showDatePicker = false
                 }) { Text("OK") }
@@ -357,7 +389,7 @@ fun NewExitPermitScreen(
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
-    var selectedDate by remember { mutableStateOf("") }
+    val currentDate = remember { formatTeacherDisplayDate(LocalDate.now()) }
     var selectedTime by remember { mutableStateOf("") }
     var motive by remember { mutableStateOf("") }
 
@@ -367,16 +399,14 @@ fun NewExitPermitScreen(
     val options = listOf("Sí", "No")
 
     // Estados para selectores y diálogos
-    var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var showTimeErrorDialog by remember { mutableStateOf(false) }
 
     // Validación de formulario
-    val isFormValid = selectedDate.isNotEmpty() &&
-            selectedTime.isNotEmpty() &&
+    val isFormValid = selectedTime.isNotEmpty() &&
             selectday.isNotEmpty() &&
-            motive.length >= 5
+            motive.trim().length >= 100
 
     Scaffold(
         topBar = {
@@ -410,15 +440,13 @@ fun NewExitPermitScreen(
             // Campo Fecha
             Text("Fecha de salida:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             OutlinedTextField(
-                value = selectedDate,
+                value = currentDate,
                 onValueChange = {},
                 readOnly = true,
-                placeholder = { Text("dd/mm/aaaa") },
+                enabled = false,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 trailingIcon = {
-                    IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.DateRange, contentDescription = null)
-                    }
+                    Icon(Icons.Default.DateRange, contentDescription = null)
                 },
                 shape = RoundedCornerShape(8.dp)
             )
@@ -455,7 +483,7 @@ fun NewExitPermitScreen(
                     placeholder = { Text("Selecciona") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp)
                 )
 
@@ -479,7 +507,7 @@ fun NewExitPermitScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Campo Motivo
-            Text("Motivo de la salida:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text("Motivo de la salida (Mínimo 100 caracteres):", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             OutlinedTextField(
                 value = motive,
                 onValueChange = { motive = it },
@@ -511,38 +539,6 @@ fun NewExitPermitScreen(
                     Text("Enviar", color = Color.White)
                 }
             }
-        }
-    }
-
-    // Lógica de Calendario
-    if (showDatePicker) {
-        val calendar = Calendar.getInstance()
-        val datePickerState = rememberDatePickerState(
-            selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    val today = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0);
-                        set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-                    }.timeInMillis
-                    val minDate = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -3) }.timeInMillis
-                    return utcTimeMillis in minDate..today
-                }
-            }
-        )
-
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let {
-                        val cal = Calendar.getInstance().apply { timeInMillis = it }
-                        selectedDate = "${cal.get(Calendar.DAY_OF_MONTH)}/${cal.get(Calendar.MONTH) + 1}/${cal.get(Calendar.YEAR)}"
-                    }
-                    showDatePicker = false
-                }) { Text("OK") }
-            }
-        ) {
-            DatePicker(state = datePickerState)
         }
     }
 
@@ -684,15 +680,6 @@ fun HistoryScreen(
                 title = { Text("Solicitudes", fontWeight = FontWeight.Bold, color = Color.White) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = HeaderBlue)
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNewRequest,
-                containerColor = SuccessGreen,
-                contentColor = Color.White,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("Nuevo") }
             )
         }
     ) { padding ->

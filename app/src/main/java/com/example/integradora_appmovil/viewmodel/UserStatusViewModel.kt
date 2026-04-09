@@ -38,11 +38,12 @@ class UserStatusViewModel(
         }
     }
 
-    fun toggleUserStatus(userId: Long, active: Boolean) {
+    fun toggleUserStatus(userId: Long, active: Boolean, onSuccess: () -> Unit = {}) {
         val session = SessionManager.currentUser ?: return
         viewModelScope.launch {
             try {
                 repository.updateAdminUserStatus(userId, active, session.token)
+                onSuccess()
                 loadUsers()
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Error al cambiar estado"

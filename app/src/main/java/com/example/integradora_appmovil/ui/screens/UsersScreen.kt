@@ -36,13 +36,12 @@ fun UsersScreen(
     val isLoading = viewModel.isLoading
     val successMessage = viewModel.successMessage
     
-    val filteredUsers = remember(users, viewModel.searchTerm) {
+    val filteredUsers =
         if (viewModel.searchTerm.isBlank()) users.toList()
-        else users.filter { 
-            it.nombre.contains(viewModel.searchTerm, ignoreCase = true) || 
-            it.correo.contains(viewModel.searchTerm, ignoreCase = true) 
+        else users.filter {
+            it.nombre.contains(viewModel.searchTerm, ignoreCase = true) ||
+                it.correo.contains(viewModel.searchTerm, ignoreCase = true)
         }
-    }
 
     LaunchedEffect(Unit) {
         viewModel.loadData()

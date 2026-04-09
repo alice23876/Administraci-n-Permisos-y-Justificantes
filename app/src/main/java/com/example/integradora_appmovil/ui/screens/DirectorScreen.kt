@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.*
@@ -154,6 +155,16 @@ fun DirectorScreen(
                             isLoading = isDetailLoading,
                             errorMessage = detailErrorMessage,
                             request = it,
+                            onDownloadAttachment = {
+                                viewModel.downloadSelectedAttachment(
+                                    onSuccess = { file ->
+                                        PdfFileHandler.openPdf(context, file.fileName, file.bytes, file.contentType)
+                                    },
+                                    onError = { message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            },
                             onBack = {
                                 viewModel.clearSelectedRequest()
                                 currentScreen = DirectorNav.PENDING_REQUESTS
@@ -292,7 +303,7 @@ fun DirectorProfile(
 
     Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
-            Icon(Icons.Default.ArrowBack, contentDescription = null, tint = BlueAction)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = BlueAction)
             Text("Regresar", color = BlueAction, modifier = Modifier.padding(start = 4.dp))
         }
 
@@ -421,12 +432,13 @@ fun RequestDetailView(
     request: RequestItem,
     isLoading: Boolean,
     errorMessage: String,
+    onDownloadAttachment: () -> Unit,
     onBack: () -> Unit,
     onAction: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
-            Icon(Icons.Default.ArrowBack, contentDescription = null, tint = BlueAction)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = BlueAction)
             Text("Regresar", color = BlueAction, modifier = Modifier.padding(start = 4.dp))
         }
 
@@ -479,16 +491,7 @@ fun RequestDetailView(
                         Text("Toca descargar para abrir el PDF", fontSize = 12.sp, color = Color.Gray)
                     }
                     IconButton(
-                        onClick = {
-                            viewModel.downloadSelectedAttachment(
-                                onSuccess = { file ->
-                                    PdfFileHandler.openPdf(context, file.fileName, file.bytes, file.contentType)
-                                },
-                                onError = { message ->
-                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                                }
-                            )
-                        }
+                        onClick = onDownloadAttachment
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null, tint = BlueAction)
                     }
@@ -552,7 +555,7 @@ fun HistoryView(
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
-            Icon(Icons.Default.ArrowBack, contentDescription = null, tint = BlueAction)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = BlueAction)
             Text("Regresar al inicio", color = BlueAction, modifier = Modifier.padding(start = 4.dp))
         }
         Text("Historial de Solicitudes", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(vertical = 16.dp))

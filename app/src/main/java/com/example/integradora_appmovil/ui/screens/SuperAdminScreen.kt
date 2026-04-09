@@ -1,5 +1,6 @@
 package com.example.integradora_appmovil.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
@@ -69,8 +71,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.integradora_appmovil.model.AuthSession
@@ -84,10 +88,16 @@ import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.WelcomeCardBG
 import com.example.integradora_appmovil.viewmodel.SuperAdminViewModel
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 enum class SuperAdminNav {
     HOME, USERS, AREAS, STATUSES
 }
+
+private const val ADMIN_STATUS_DATES_STORAGE_KEY = "superAdminStatusDates"
+private val adminStatusDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
 private val availableRoles = listOf(
     "Super administrador",
@@ -124,6 +134,74 @@ private fun isMutedDepartment(value: String): Boolean {
     return normalized == "administrador" || normalized == "guardia de caseta" || normalized == "rh"
 }
 
+private fun loadAdminStatusDates(context: Context): Map<Long, String> {
+    val rawValue = context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
+        .getString(ADMIN_STATUS_DATES_STORAGE_KEY, null)
+        ?: return emptyMap()
+
+    val parsed = mutableMapOf<Long, String>()
+    val jsonObject = runCatching { org.json.JSONObject(rawValue) }.getOrNull() ?: return emptyMap()
+    val keys = jsonObject.keys()
+
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val userId = key.toLongOrNull() ?: continue
+        val value = jsonObject.optString(key)
+        if (value.isNotBlank()) {
+            parsed[userId] = value
+        }
+    }
+
+    return parsed
+}
+
+private fun persistAdminStatusDates(context: Context, statusDates: Map<Long, String>) {
+    val jsonObject = org.json.JSONObject()
+    statusDates.forEach { (userId, value) ->
+        jsonObject.put(userId.toString(), value)
+    }
+
+    context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
+        .edit()
+        .putString(ADMIN_STATUS_DATES_STORAGE_KEY, jsonObject.toString())
+        .apply()
+}
+
+private fun formatAdminStatusDate(value: String): String {
+    if (value.isBlank()) {
+        return "--/--/----"
+    }
+
+    val instant = runCatching { Instant.parse(value) }.getOrNull() ?: return "--/--/----"
+    return instant.atZone(ZoneId.systemDefault()).toLocalDate().format(adminStatusDateFormatter)
+}
+
+private fun buildDefaultAdminUser(session: AuthSession?): AdminUserRemote {
+    return AdminUserRemote(
+        id = -1L,
+        nombre = session?.nombre?.ifBlank { "Administrador" } ?: "Administrador",
+        correo = session?.correo?.ifBlank { "admin" } ?: "admin",
+        departamento = "Administrador",
+        rol = "Super administrador",
+        activo = true
+    )
+}
+
+private fun buildPanelUsers(
+    users: List<AdminUserRemote>,
+    session: AuthSession?
+): List<AdminUserRemote> {
+    val shouldShowDefaultAdmin =
+        normalizeValue(session?.rol.orEmpty()).contains("super") &&
+            users.none { it.correo.equals("admin", ignoreCase = true) }
+
+    return if (shouldShowDefaultAdmin) {
+        listOf(buildDefaultAdminUser(session)) + users
+    } else {
+        users
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SuperAdminScreen(
@@ -131,8 +209,10 @@ fun SuperAdminScreen(
     session: AuthSession?,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val statusDatesByUserId = remember { androidx.compose.runtime.mutableStateMapOf<Long, String>() }
     var currentScreen by remember { mutableStateOf(SuperAdminNav.HOME) }
     var searchTerm by remember { mutableStateOf("") }
     var selectedUser by remember { mutableStateOf<AdminUserRemote?>(null) }
@@ -144,7 +224,6 @@ fun SuperAdminScreen(
     var selectedRole by remember { mutableStateOf("") }
     var selectedAreaId by remember { mutableStateOf<Long?>(null) }
     var selectedDirectorId by remember { mutableStateOf<Long?>(null) }
-    var selectedCreateAreaDirectorId by remember { mutableStateOf<Long?>(null) }
     var newUserName by remember { mutableStateOf("") }
     var newUserEmail by remember { mutableStateOf("") }
     var newUserPassword by remember { mutableStateOf("") }
@@ -162,34 +241,34 @@ fun SuperAdminScreen(
     val successMessage = viewModel.successMessage
 
     LaunchedEffect(session?.correo, session?.token) {
+        statusDatesByUserId.clear()
+        statusDatesByUserId.putAll(loadAdminStatusDates(context))
         viewModel.bindSession(session)
     }
 
-    val filteredUsers = remember(users, searchTerm) {
-        if (searchTerm.isBlank()) {
-            users.toList()
-        } else {
-            val query = searchTerm.trim().lowercase()
-            users.filter {
-                it.nombre.lowercase().contains(query) ||
-                        it.correo.lowercase().contains(query) ||
-                        it.rol.lowercase().contains(query) ||
-                        it.departamento.lowercase().contains(query)
-            }
+    val panelUsers = buildPanelUsers(users.toList(), session)
+        .map { user -> user.copy(fechaEstado = statusDatesByUserId[user.id].orEmpty()) }
+    val normalizedSearchTerm = searchTerm.trim().lowercase()
+    val filteredUsers = if (normalizedSearchTerm.isBlank()) {
+        panelUsers
+    } else {
+        panelUsers.filter {
+            it.nombre.lowercase().contains(normalizedSearchTerm) ||
+                it.correo.lowercase().contains(normalizedSearchTerm) ||
+                it.rol.lowercase().contains(normalizedSearchTerm) ||
+                it.departamento.lowercase().contains(normalizedSearchTerm)
         }
     }
 
     val roleOptions = remember(editingUserRole) {
         availableRoles.filter { normalizeValue(it) != normalizeValue(editingUserRole?.rol ?: "") }
     }
-    val areaOptions = remember(areas, editingUserArea) {
-        areas.filter { area -> normalizeValue(area.nombre) != normalizeValue(editingUserArea?.departamento ?: "") }
+    val areaOptions = areas.filter { area ->
+        normalizeValue(area.nombre) != normalizeValue(editingUserArea?.departamento ?: "")
     }
-    val directorOptions = remember(users, editingAreaDirector) {
-        users.filter { user ->
-            !user.correo.equals("admin", ignoreCase = true) &&
-                normalizeValue(user.nombre) != normalizeValue(editingAreaDirector?.director ?: "")
-        }
+    val directorOptions = users.filter { user ->
+        !user.correo.equals("admin", ignoreCase = true) &&
+            normalizeValue(user.nombre) != normalizeValue(editingAreaDirector?.director ?: "")
     }
     val canCreateUser = validateAdminName(newUserName) &&
         validateAdminEmail(newUserEmail) &&
@@ -202,14 +281,19 @@ fun SuperAdminScreen(
     val canSaveRole = editingUserRole != null &&
         selectedRole.isNotBlank() &&
         normalizeValue(selectedRole) != normalizeValue(editingUserRole?.rol ?: "")
-    val currentAreaId = remember(editingUserArea, areas) {
+    val currentAreaId =
         areas.firstOrNull { normalizeValue(it.nombre) == normalizeValue(editingUserArea?.departamento ?: "") }?.id
-    }
-    val currentDirectorId = remember(editingAreaDirector, users) {
+    val currentDirectorId =
         users.firstOrNull { normalizeValue(it.nombre) == normalizeValue(editingAreaDirector?.director ?: "") }?.id
-    }
     val canSaveArea = editingUserArea != null && selectedAreaId != null && selectedAreaId != currentAreaId
     val canSaveDirector = editingAreaDirector != null && selectedDirectorId != null && selectedDirectorId != currentDirectorId
+    val statusPanelUsers = panelUsers.filterNot { normalizeValue(it.rol).contains("super") }
+
+    fun toggleUserStatusWithDate(user: AdminUserRemote, activo: Boolean) {
+        viewModel.updateUserStatus(user, activo)
+        statusDatesByUserId[user.id] = Instant.now().toString()
+        persistAdminStatusDates(context, statusDatesByUserId.toMap())
+    }
 
     fun closeUserDialogs() {
         createUserOpen = false
@@ -228,7 +312,6 @@ fun SuperAdminScreen(
         createAreaOpen = false
         editingAreaDirector = null
         selectedDirectorId = null
-        selectedCreateAreaDirectorId = null
         newAreaName = ""
     }
 
@@ -318,7 +401,7 @@ fun SuperAdminScreen(
                             errorMessage = errorMessage,
                             updatingUserId = updatingUserId,
                             onRetry = { viewModel.refreshAll() },
-                            onToggleStatus = { user, activo -> viewModel.updateUserStatus(user, activo) },
+                            onToggleStatus = { user, activo -> toggleUserStatusWithDate(user, activo) },
                             onViewDetails = { selectedUser = it },
                             onCreateUser = { createUserOpen = true },
                             onChangeRole = {
@@ -350,12 +433,12 @@ fun SuperAdminScreen(
 
                     SuperAdminNav.STATUSES -> {
                         SuperAdminStatusesView(
-                            users = users.toList(),
+                            users = statusPanelUsers,
                             isLoading = isLoading,
                             errorMessage = errorMessage,
                             updatingUserId = updatingUserId,
                             onRetry = { viewModel.refreshAll() },
-                            onToggleStatus = { user, activo -> viewModel.updateUserStatus(user, activo) },
+                            onToggleStatus = { user, activo -> toggleUserStatusWithDate(user, activo) },
                             onViewDetails = { selectedUser = it }
                         )
                     }
@@ -432,15 +515,12 @@ fun SuperAdminScreen(
     if (createAreaOpen) {
         AdminCreateAreaDialog(
             areaName = newAreaName,
-            users = users.filterNot { it.correo.equals("admin", ignoreCase = true) },
-            selectedDirectorId = selectedCreateAreaDirectorId,
             saving = savingArea,
             canSave = canCreateArea,
             onAreaNameChange = { newAreaName = it },
-            onDirectorChange = { selectedCreateAreaDirectorId = it },
             onDismiss = { closeAreaDialogs() },
             onSave = {
-                viewModel.createArea(newAreaName.trim(), selectedCreateAreaDirectorId) { closeAreaDialogs() }
+                viewModel.createArea(newAreaName.trim()) { closeAreaDialogs() }
             }
         )
     }
@@ -708,14 +788,86 @@ private fun SuperAdminStatusesView(
             users.isEmpty() -> AdminEmptyState("Sin usuarios registrados")
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(users) { user ->
-                    AdminUserCard(
+                    AdminUserStatusCard(
                         user = user,
                         isUpdating = updatingUserId == user.id,
-                        showToggle = true,
                         onToggleStatus = onToggleStatus,
                         onViewDetails = onViewDetails
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminUserStatusCard(
+    user: AdminUserRemote,
+    isUpdating: Boolean,
+    onToggleStatus: (AdminUserRemote, Boolean) -> Unit,
+    onViewDetails: (AdminUserRemote) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(user.nombre, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF5A5A5A))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(user.correo, fontSize = 14.sp, color = Color.Gray)
+                }
+                Row(
+                    modifier = Modifier.padding(start = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StatusBadge(user.activo)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = user.activo,
+                        onCheckedChange = { onToggleStatus(user, it) },
+                        enabled = !isUpdating
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Área: ${user.departamento.ifBlank { "-" }}", fontSize = 14.sp, color = Color.Gray)
+                Text("Rol: ${user.rol.ifBlank { "-" }}", fontSize = 14.sp, color = Color.Gray)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                color = Color(0xFFF7F7F7),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Última fecha de cambio: ${formatAdminStatusDate(user.fechaEstado)}",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    fontSize = 13.sp,
+                    color = Color(0xFF6B6B6B)
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Button(
+                onClick = { onViewDetails(user) },
+                modifier = Modifier.fillMaxWidth().height(42.dp),
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF0F0F0),
+                    contentColor = Color(0xFF6B6B6B)
+                )
+            ) {
+                Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Ver detalles", fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -744,18 +896,32 @@ private fun AdminUserCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Surface(color = Color(0xFFECF0F1), shape = RoundedCornerShape(4.dp)) {
                         Text("#${user.id}", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(user.nombre, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF5A5A5A))
+                    Text(
+                        text = user.nombre,
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color(0xFF5A5A5A),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 if (showToggle) {
                     if (user.correo.equals("admin", ignoreCase = true)) {
                         StatusBadge(user.activo)
                     } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.padding(start = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             StatusBadge(user.activo)
                             Spacer(modifier = Modifier.width(8.dp))
                             Switch(
@@ -855,7 +1021,7 @@ private fun AdminChangeRoleDialog(
                         readOnly = true,
                         placeholder = { Text("Selecciona un rol") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color(0xFFF4F4F4),
                             unfocusedContainerColor = Color(0xFFF4F4F4)
@@ -921,7 +1087,7 @@ private fun AdminAssignAreaDialog(
                         readOnly = true,
                         placeholder = { Text(if (areas.isEmpty()) "Sin áreas registradas" else "Selecciona un área") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = areas.isNotEmpty()),
                         enabled = areas.isNotEmpty(),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color(0xFFF4F4F4),
@@ -995,7 +1161,7 @@ private fun AdminCreateUserDialog(
                         readOnly = true,
                         label = { Text("Rol") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                     )
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         availableCreateRoles.forEach { item ->
@@ -1019,19 +1185,16 @@ private fun AdminCreateUserDialog(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AdminCreateAreaDialog(
     areaName: String,
-    users: List<AdminUserRemote>,
-    selectedDirectorId: Long?,
     saving: Boolean,
     canSave: Boolean,
     onAreaNameChange: (String) -> Unit,
-    onDirectorChange: (Long?) -> Unit,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(20.dp)) {
@@ -1049,41 +1212,6 @@ private fun AdminCreateAreaDialog(
                     label = { Text("Nombre del área") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Asignar director:", color = Color.Gray, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-                    OutlinedTextField(
-                        value = users.firstOrNull { it.id == selectedDirectorId }?.let { "${it.nombre} - ${it.rol}" }.orEmpty(),
-                        onValueChange = {},
-                        readOnly = true,
-                        placeholder = { Text("Opcional") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFFF4F4F4),
-                            unfocusedContainerColor = Color(0xFFF4F4F4)
-                        )
-                    )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Sin asignar") },
-                            onClick = {
-                                onDirectorChange(null)
-                                expanded = false
-                            }
-                        )
-                        users.forEach { user ->
-                            DropdownMenuItem(
-                                text = { Text("${user.nombre} - ${user.rol}") },
-                                onClick = {
-                                    onDirectorChange(user.id)
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
                 Spacer(modifier = Modifier.height(20.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     OutlinedButton(onClick = onDismiss) { Text("Cancelar") }
@@ -1127,7 +1255,7 @@ private fun AdminAssignDirectorDialog(
                         readOnly = true,
                         placeholder = { Text("Seleccionar usuario") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                     )
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         if (area.director.isNotBlank()) {

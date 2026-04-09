@@ -1,16 +1,44 @@
 package com.example.integradora_appmovil.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,9 +46,66 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.example.integradora_appmovil.repository.AdminUserRemote
 import com.example.integradora_appmovil.ui.theme.HeaderBlue
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.viewmodel.UserStatusViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private const val ADMIN_STATUS_DATES_STORAGE_KEY = "superAdminStatusDates"
+private val statusDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+private fun normalizeStatusValue(value: String): String =
+    value.lowercase()
+        .normalize()
+
+private fun String.normalize(): String = java.text.Normalizer.normalize(this.trim(), java.text.Normalizer.Form.NFD)
+    .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+
+private fun loadStatusDates(context: Context): Map<Long, String> {
+    val rawValue = context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
+        .getString(ADMIN_STATUS_DATES_STORAGE_KEY, null)
+        ?: return emptyMap()
+
+    val parsed = mutableMapOf<Long, String>()
+    val jsonObject = runCatching { org.json.JSONObject(rawValue) }.getOrNull() ?: return emptyMap()
+
+    val keys = jsonObject.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val userId = key.toLongOrNull() ?: continue
+        val value = jsonObject.optString(key)
+        if (value.isNotBlank()) {
+            parsed[userId] = value
+        }
+    }
+
+    return parsed
+}
+
+private fun persistStatusDates(context: Context, statusDates: Map<Long, String>) {
+    val jsonObject = org.json.JSONObject()
+    statusDates.forEach { (userId, value) ->
+        jsonObject.put(userId.toString(), value)
+    }
+
+    context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
+        .edit()
+        .putString(ADMIN_STATUS_DATES_STORAGE_KEY, jsonObject.toString())
+        .apply()
+}
+
+private fun formatStatusDate(value: String): String {
+    if (value.isBlank()) {
+        return "--/--/----"
+    }
+
+    val instant = runCatching { Instant.parse(value) }.getOrNull() ?: return "--/--/----"
+    return instant.atZone(ZoneId.systemDefault()).toLocalDate().format(statusDateFormatter)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,23 +113,31 @@ fun UserStatusScreen(
     viewModel: UserStatusViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val users = viewModel.users
     val isLoading = viewModel.isLoading
-    
-    val filteredUsers = remember(users, viewModel.searchTerm) {
-        if (viewModel.searchTerm.isBlank()) users.toList()
-        else users.filter { 
-            it.nombre.contains(viewModel.searchTerm, ignoreCase = true) || 
-            it.correo.contains(viewModel.searchTerm, ignoreCase = true) 
-        }
+    val errorMessage = viewModel.errorMessage
+    val statusDatesByUserId = remember { mutableStateMapOf<Long, String>() }
+
+    LaunchedEffect(Unit) {
+        statusDatesByUserId.clear()
+        statusDatesByUserId.putAll(loadStatusDates(context))
+        viewModel.loadUsers()
     }
+
+    val panelUsers = users
+        .map { user -> user.copy(fechaEstado = statusDatesByUserId[user.id].orEmpty()) }
+        .filterNot { normalizeStatusValue(it.rol).contains("super") }
+
+    val filteredUsers =
+        if (viewModel.searchTerm.isBlank()) panelUsers
+        else panelUsers.filter {
+            it.nombre.contains(viewModel.searchTerm, ignoreCase = true) ||
+                it.correo.contains(viewModel.searchTerm, ignoreCase = true)
+        }
 
     val activeUsers = filteredUsers.filter { it.activo }
     val inactiveUsers = filteredUsers.filter { !it.activo }
-
-    LaunchedEffect(Unit) {
-        viewModel.loadUsers()
-    }
 
     Scaffold(
         topBar = {
@@ -52,7 +145,7 @@ fun UserStatusScreen(
                 title = { Text("Estados de usuario", color = Color.White, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Regresar", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = HeaderBlue)
@@ -82,44 +175,103 @@ fun UserStatusScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (isLoading && users.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            when {
+                isLoading && users.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = SuccessGreen)
                 }
-            } else {
-                LazyColumn(
+                errorMessage.isNotEmpty() && users.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(errorMessage, color = Color(0xFFE53935))
+                }
+                else -> LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     if (activeUsers.isNotEmpty()) {
                         item { Text("Usuarios activos.", fontWeight = FontWeight.Bold, color = Color.Gray) }
                         items(activeUsers) { user ->
-                            AdminUserListItem(
+                            UserStatusListItem(
                                 user = user,
-                                onToggleStatus = { active -> viewModel.toggleUserStatus(user.id, active) },
-                                onChangeRole = {}, // No necesario en esta pantalla según el diseño
-                                onAssignArea = {}
+                                onToggleStatus = { nextActive ->
+                                    viewModel.toggleUserStatus(user.id, nextActive) {
+                                        statusDatesByUserId[user.id] = Instant.now().toString()
+                                        persistStatusDates(context, statusDatesByUserId.toMap())
+                                    }
+                                }
                             )
                         }
                     }
 
                     if (inactiveUsers.isNotEmpty()) {
-                        item { 
+                        item {
                             Spacer(modifier = Modifier.height(8.dp))
                             HorizontalDivider(color = Color(0xFFEEEEEE))
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("Usuarios inactivos.", fontWeight = FontWeight.Bold, color = Color.Gray) 
+                            Text("Usuarios inactivos.", fontWeight = FontWeight.Bold, color = Color.Gray)
                         }
                         items(inactiveUsers) { user ->
-                            AdminUserListItem(
+                            UserStatusListItem(
                                 user = user,
-                                onToggleStatus = { active -> viewModel.toggleUserStatus(user.id, active) },
-                                onChangeRole = {},
-                                onAssignArea = {}
+                                onToggleStatus = { nextActive ->
+                                    viewModel.toggleUserStatus(user.id, nextActive) {
+                                        statusDatesByUserId[user.id] = Instant.now().toString()
+                                        persistStatusDates(context, statusDatesByUserId.toMap())
+                                    }
+                                }
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserStatusListItem(
+    user: AdminUserRemote,
+    onToggleStatus: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(user.nombre, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF5A5A5A))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(user.correo, fontSize = 14.sp, color = Color.Gray)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AdminStatusBadge(user.activo)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(checked = user.activo, onCheckedChange = onToggleStatus)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Área: ${user.departamento.ifBlank { "-" }}", fontSize = 14.sp, color = Color.Gray)
+                Text("Rol: ${user.rol.ifBlank { "-" }}", fontSize = 14.sp, color = Color.Gray)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                color = Color(0xFFF7F7F7),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Última fecha de cambio: ${formatStatusDate(user.fechaEstado)}",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    fontSize = 13.sp,
+                    color = Color(0xFF6B6B6B)
+                )
             }
         }
     }
