@@ -1,10 +1,15 @@
 package com.example.integradora_appmovil.ui.screens
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview as CameraPreview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,11 +32,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.text.KeyboardOptions
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.launch
 import com.example.integradora_appmovil.ui.theme.HeaderBlue
 import com.example.integradora_appmovil.ui.theme.DarkBlueDrawer
@@ -39,6 +48,8 @@ import com.example.integradora_appmovil.ui.theme.InstitutionGreen
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.DisabledGray
 import com.example.integradora_appmovil.viewmodel.SecurityGuardViewModel
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,43 +77,20 @@ fun SecurityGuardScreen(
     val isLoading = viewModel.isLoading
     val errorMessage = viewModel.errorMessage
     val validationResult = viewModel.validationResult
-    val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val hasCameraPermission = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.CAMERA
+    ) == PackageManager.PERMISSION_GRANTED
+    var scannerEnabled by remember { mutableStateOf(false) }
 
-    val barcodeScanner = remember(activity) {
-        activity?.let {
-            val options = GmsBarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .enableAutoZoom()
-                .build()
-            GmsBarcodeScanning.getClient(it, options)
-        }
-    }
-    val startScan = remember(barcodeScanner, isLoading) {
-        {
-            if (!isLoading) {
-                barcodeScanner?.startScan()
-                    ?.addOnSuccessListener { barcode ->
-                        val value = barcode.rawValue?.trim().orEmpty()
-                        if (value.isNotBlank()) {
-                            viewModel.onQrScanned(value)
-                            viewModel.validateFolio()
-                        }
-                    }
-            }
-        }
-    }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            startScan()
+            scannerEnabled = true
+            viewModel.showScanError("")
         }
-    }
-    val hasCameraPermission = remember(context) {
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
     }
 
     ModalNavigationDrawer(
@@ -222,34 +210,45 @@ fun SecurityGuardScreen(
                                 .weight(1f)
                                 .background(DarkBlueDrawer, RoundedCornerShape(12.dp))
                                 .border(2.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                .clickable(enabled = barcodeScanner != null && !isLoading) {
-                                    val isCameraGranted = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.CAMERA
-                                    ) == PackageManager.PERMISSION_GRANTED
-
-                                    if (isCameraGranted || hasCameraPermission) {
-                                        startScan()
+                                .clickable(enabled = !isLoading && !scannerEnabled) {
+                                    if (hasCameraPermission) {
+                                        scannerEnabled = true
+                                        viewModel.showScanError("")
                                     } else {
                                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                     }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            // Guías del QR (Simuladas con un borde verde en las esquinas si se desea, aquí simplificado)
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    Icons.Default.PhotoCamera,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(48.dp)
+                            if (scannerEnabled && hasCameraPermission) {
+                                GuardQrScannerView(
+                                    modifier = Modifier.fillMaxSize(),
+                                    lifecycleOwner = lifecycleOwner,
+                                    onScanSuccess = { value ->
+                                        scannerEnabled = false
+                                        viewModel.onQrScanned(value)
+                                        viewModel.validateFolio()
+                                    },
+                                    onScanError = { message ->
+                                        scannerEnabled = false
+                                        viewModel.showScanError(message)
+                                    }
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "Apunta la cámara al código QR",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 12.sp
-                                )
+                            } else {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        Icons.Default.PhotoCamera,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "Toca para abrir la cámara",
+                                        color = Color.White.copy(alpha = 0.8f),
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
                         }
 
@@ -412,4 +411,120 @@ fun SecurityGuardScreen(
             }
         }
     }
+}
+
+@Composable
+private fun GuardQrScannerView(
+    modifier: Modifier = Modifier,
+    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+    onScanSuccess: (String) -> Unit,
+    onScanError: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val previewView = remember {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    var hasProcessedCode by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            cameraExecutor.shutdown()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
+            ProcessCameraProvider.getInstance(context)
+
+        val listener = Runnable {
+            val cameraProvider = runCatching { cameraProviderFuture.get() }
+                .getOrElse {
+                    onScanError("No se pudo iniciar la cámara")
+                    return@Runnable
+                }
+
+            val preview = CameraPreview.Builder().build().apply {
+                setSurfaceProvider(previewView.surfaceProvider)
+            }
+
+            val scanner = BarcodeScanning.getClient(
+                BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                    .build()
+            )
+
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .apply {
+                    setAnalyzer(cameraExecutor) { imageProxy ->
+                        val mediaImage = imageProxy.image
+                        if (mediaImage == null || hasProcessedCode) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
+
+                        val inputImage = InputImage.fromMediaImage(
+                            mediaImage,
+                            imageProxy.imageInfo.rotationDegrees
+                        )
+
+                        scanner.process(inputImage)
+                            .addOnSuccessListener { barcodes ->
+                                val rawValue = barcodes
+                                    .firstOrNull { !it.rawValue.isNullOrBlank() }
+                                    ?.rawValue
+                                    ?.trim()
+                                    .orEmpty()
+
+                                if (rawValue.isNotBlank() && !hasProcessedCode) {
+                                    hasProcessedCode = true
+                                    onScanSuccess(rawValue)
+                                }
+                            }
+                            .addOnFailureListener {
+                                if (!hasProcessedCode) {
+                                    onScanError(
+                                        it.localizedMessage
+                                            ?: "No se pudo leer el código QR"
+                                    )
+                                }
+                            }
+                            .addOnCompleteListener {
+                                imageProxy.close()
+                            }
+                    }
+                }
+
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    analysis
+                )
+            } catch (_: Exception) {
+                onScanError("No se pudo abrir la cámara")
+            }
+        }
+
+        cameraProviderFuture.addListener(listener, ContextCompat.getMainExecutor(context))
+
+        onDispose {
+            runCatching {
+                val provider = cameraProviderFuture.get()
+                provider.unbindAll()
+            }
+        }
+    }
+
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
 }

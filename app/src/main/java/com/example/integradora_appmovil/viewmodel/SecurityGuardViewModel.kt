@@ -62,6 +62,10 @@ class SecurityGuardViewModel(
         }
     }
 
+    fun showScanError(message: String) {
+        errorMessage = message
+    }
+
     fun validateFolio() {
         if (!isFormValid) {
             errorMessage = "Ingresa un folio válido"

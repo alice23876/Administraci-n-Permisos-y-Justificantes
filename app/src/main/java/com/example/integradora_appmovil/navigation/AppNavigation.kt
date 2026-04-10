@@ -3,9 +3,13 @@ package com.example.integradora_appmovil.navigation
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import com.example.integradora_appmovil.model.SessionManager
@@ -98,6 +102,7 @@ fun AppNavigation() {
         // INICIO DOCENTE
         composable(Routes.TEACHER_HOME) {
             val teacherUserData by teacherViewModel.userData.collectAsState()
+            val teacherHistory by teacherViewModel.historyData.collectAsState()
             TeacherScreen(
                 userData = teacherUserData ?: UserProfile(
                     name = "Docente",
@@ -105,6 +110,10 @@ fun AppNavigation() {
                     email = currentSession?.correo.orEmpty(),
                     position = currentSession?.rol.orEmpty()
                 ),
+                hasTodayExitPermit = teacherHistory.any {
+                    it.type.contains("permiso", ignoreCase = true) &&
+                        it.date == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                },
                 onLogout = {
                     teacherViewModel.logout()
                     loginViewModel.resetForm()
@@ -141,6 +150,7 @@ fun AppNavigation() {
         // HISTORIAL DE SOLICITUDES
         composable(Routes.TEACHER_HISTORY) {
             val context = LocalContext.current
+            val lifecycleOwner = LocalLifecycleOwner.current
             val history by teacherViewModel.historyData.collectAsState()
             val isHistoryLoading by teacherViewModel.isHistoryLoading.collectAsState()
             val historyError by teacherViewModel.historyError.collectAsState()
@@ -150,6 +160,19 @@ fun AppNavigation() {
             val selectedQr by teacherViewModel.selectedQr.collectAsState()
             val isQrLoading by teacherViewModel.isQrLoading.collectAsState()
             val qrError by teacherViewModel.qrError.collectAsState()
+
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        teacherViewModel.refreshHistory()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
+
             HistoryScreen(
                 requests = history,
                 onBack = { navController.popBackStack() },
@@ -195,9 +218,28 @@ fun AppNavigation() {
         }
         // NUEVO PASE DE SALIDA
         composable(Routes.TEACHER_NEW_EXIT_PERMIT){
+            val teacherHistory by teacherViewModel.historyData.collectAsState()
+            val isExitPermitSubmitting by teacherViewModel.isExitPermitSubmitting.collectAsState()
+            val exitPermitError by teacherViewModel.exitPermitError.collectAsState()
+
             NewExitPermitScreen(
+                hasTodayExitPermit = teacherHistory.any {
+                    it.type.contains("permiso", ignoreCase = true) &&
+                        it.date == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                },
+                isSubmitting = isExitPermitSubmitting,
+                submitError = exitPermitError,
+                onSubmit = { horaSalida, regresaMismoDia, motivo, onSuccess ->
+                    teacherViewModel.createExitPermit(
+                        horaSalida = horaSalida,
+                        regresaMismoDia = regresaMismoDia,
+                        motivo = motivo,
+                        onSuccess = onSuccess
+                    )
+                },
                 onBack = { navController.popBackStack() },
                 onSuccess = {
+                    teacherViewModel.clearExitPermitFeedback()
                     navController.navigate(Routes.TEACHER_HOME) {
                         popUpTo(Routes.TEACHER_NEW_EXIT_PERMIT) { inclusive = true }
                     }
@@ -206,6 +248,20 @@ fun AppNavigation() {
         }
 
         composable(Routes.DIRECTOR_HOME) {
+            val lifecycleOwner = LocalLifecycleOwner.current
+
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        directorViewModel.refreshRequests()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
+
             DirectorScreen(
                 viewModel = directorViewModel,
                 session = currentSession,
@@ -235,6 +291,20 @@ fun AppNavigation() {
         }
 
         composable(Routes.SUPER_ADMIN_HOME) {
+            val lifecycleOwner = LocalLifecycleOwner.current
+
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        superAdminViewModel.refreshAll()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
+
             SuperAdminScreen(
                 viewModel = superAdminViewModel,
                 session = currentSession,

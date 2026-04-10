@@ -1,6 +1,4 @@
 package com.example.integradora_appmovil.ui.screens
-
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -71,7 +69,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,8 +92,6 @@ import java.time.format.DateTimeFormatter
 enum class SuperAdminNav {
     HOME, USERS, AREAS, STATUSES
 }
-
-private const val ADMIN_STATUS_DATES_STORAGE_KEY = "superAdminStatusDates"
 private val adminStatusDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
 private val availableRoles = listOf(
@@ -132,39 +127,6 @@ private fun validateAreaName(value: String) =
 private fun isMutedDepartment(value: String): Boolean {
     val normalized = normalizeValue(value)
     return normalized == "administrador" || normalized == "guardia de caseta" || normalized == "rh"
-}
-
-private fun loadAdminStatusDates(context: Context): Map<Long, String> {
-    val rawValue = context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
-        .getString(ADMIN_STATUS_DATES_STORAGE_KEY, null)
-        ?: return emptyMap()
-
-    val parsed = mutableMapOf<Long, String>()
-    val jsonObject = runCatching { org.json.JSONObject(rawValue) }.getOrNull() ?: return emptyMap()
-    val keys = jsonObject.keys()
-
-    while (keys.hasNext()) {
-        val key = keys.next()
-        val userId = key.toLongOrNull() ?: continue
-        val value = jsonObject.optString(key)
-        if (value.isNotBlank()) {
-            parsed[userId] = value
-        }
-    }
-
-    return parsed
-}
-
-private fun persistAdminStatusDates(context: Context, statusDates: Map<Long, String>) {
-    val jsonObject = org.json.JSONObject()
-    statusDates.forEach { (userId, value) ->
-        jsonObject.put(userId.toString(), value)
-    }
-
-    context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
-        .edit()
-        .putString(ADMIN_STATUS_DATES_STORAGE_KEY, jsonObject.toString())
-        .apply()
 }
 
 private fun formatAdminStatusDate(value: String): String {
@@ -209,10 +171,8 @@ fun SuperAdminScreen(
     session: AuthSession?,
     onLogout: () -> Unit
 ) {
-    val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val statusDatesByUserId = remember { androidx.compose.runtime.mutableStateMapOf<Long, String>() }
     var currentScreen by remember { mutableStateOf(SuperAdminNav.HOME) }
     var searchTerm by remember { mutableStateOf("") }
     var selectedUser by remember { mutableStateOf<AdminUserRemote?>(null) }
@@ -241,13 +201,10 @@ fun SuperAdminScreen(
     val successMessage = viewModel.successMessage
 
     LaunchedEffect(session?.correo, session?.token) {
-        statusDatesByUserId.clear()
-        statusDatesByUserId.putAll(loadAdminStatusDates(context))
         viewModel.bindSession(session)
     }
 
     val panelUsers = buildPanelUsers(users.toList(), session)
-        .map { user -> user.copy(fechaEstado = statusDatesByUserId[user.id].orEmpty()) }
     val normalizedSearchTerm = searchTerm.trim().lowercase()
     val filteredUsers = if (normalizedSearchTerm.isBlank()) {
         panelUsers
@@ -288,12 +245,6 @@ fun SuperAdminScreen(
     val canSaveArea = editingUserArea != null && selectedAreaId != null && selectedAreaId != currentAreaId
     val canSaveDirector = editingAreaDirector != null && selectedDirectorId != null && selectedDirectorId != currentDirectorId
     val statusPanelUsers = panelUsers.filterNot { normalizeValue(it.rol).contains("super") }
-
-    fun toggleUserStatusWithDate(user: AdminUserRemote, activo: Boolean) {
-        viewModel.updateUserStatus(user, activo)
-        statusDatesByUserId[user.id] = Instant.now().toString()
-        persistAdminStatusDates(context, statusDatesByUserId.toMap())
-    }
 
     fun closeUserDialogs() {
         createUserOpen = false
@@ -401,7 +352,7 @@ fun SuperAdminScreen(
                             errorMessage = errorMessage,
                             updatingUserId = updatingUserId,
                             onRetry = { viewModel.refreshAll() },
-                            onToggleStatus = { user, activo -> toggleUserStatusWithDate(user, activo) },
+                            onToggleStatus = { user, activo -> viewModel.updateUserStatus(user, activo) },
                             onViewDetails = { selectedUser = it },
                             onCreateUser = { createUserOpen = true },
                             onChangeRole = {
@@ -438,7 +389,7 @@ fun SuperAdminScreen(
                             errorMessage = errorMessage,
                             updatingUserId = updatingUserId,
                             onRetry = { viewModel.refreshAll() },
-                            onToggleStatus = { user, activo -> toggleUserStatusWithDate(user, activo) },
+                            onToggleStatus = { user, activo -> viewModel.updateUserStatus(user, activo) },
                             onViewDetails = { selectedUser = it }
                         )
                     }

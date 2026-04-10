@@ -161,6 +161,23 @@ class UserRepository {
         return response.optString("message", "Contraseña actualizada correctamente")
     }
 
+    suspend fun createTeacherExitPermit(
+        correo: String,
+        horaSalida: String,
+        regresaMismoDia: Boolean,
+        motivo: String,
+        token: String
+    ): String {
+        val payload = JSONObject()
+            .put("correo", correo.trim())
+            .put("horaSalida", horaSalida)
+            .put("regresaMismoDia", regresaMismoDia)
+            .put("motivo", motivo)
+
+        val response = MobileApiClient.postJson("/solicitudes/permisos", payload, token)
+        return response.optString("message", "Solicitud enviada correctamente")
+    }
+
     suspend fun getTeacherRequests(correo: String, token: String): List<TeacherRequestRemote> {
         val encodedCorreo = URLEncoder.encode(correo, Charsets.UTF_8.name())
         val response = MobileApiClient.getJsonArray(
@@ -342,7 +359,7 @@ class UserRepository {
                         departamento = item.optString("departamento"),
                         rol = item.optString("rol"),
                         activo = item.optBoolean("activo", false),
-                        fechaEstado = ""
+                        fechaEstado = item.optString("fechaEstado")
                     )
                 )
             }
@@ -384,7 +401,7 @@ class UserRepository {
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
             activo = response.optBoolean("activo", false),
-            fechaEstado = ""
+            fechaEstado = response.optString("fechaEstado")
         )
     }
 
@@ -397,7 +414,7 @@ class UserRepository {
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
             activo = response.optBoolean("activo"),
-            fechaEstado = ""
+            fechaEstado = response.optString("fechaEstado")
         )
     }
 
@@ -411,7 +428,7 @@ class UserRepository {
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
             activo = response.optBoolean("activo"),
-            fechaEstado = ""
+            fechaEstado = response.optString("fechaEstado")
         )
     }
 
@@ -425,7 +442,7 @@ class UserRepository {
             departamento = response.optString("departamento"),
             rol = response.optString("rol"),
             activo = response.optBoolean("activo"),
-            fechaEstado = ""
+            fechaEstado = response.optString("fechaEstado")
         )
     }
 

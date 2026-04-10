@@ -139,6 +139,7 @@ private fun formatTeacherDisplayDate(date: LocalDate): String =
 fun TeacherScreenPreview() {
     TeacherScreen(
         userData = UserProfile(name = "Elena", status = "Activa"),
+        hasTodayExitPermit = false,
         onLogout = {},
         onProfileClick = {},
         onNavigateToRequests = {},
@@ -152,6 +153,7 @@ fun TeacherScreenPreview() {
 @Composable
 fun TeacherScreen(
     userData: UserProfile, 
+    hasTodayExitPermit: Boolean = false,
     onLogout: () -> Unit,
     onProfileClick: () -> Unit,
     onNavigateToRequests: () -> Unit,
@@ -240,18 +242,30 @@ fun TeacherScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     TramiteButton(
-                        modifier = Modifier.weight(1f).clickable { onNavigateToNewRequest() },
+                        modifier = Modifier.weight(1f),
                         title = "Nuevo justificante",
                         subtitle = "Reportar inasistencia",
                         icon = Icons.Default.Description,
-                        containerColor = BlueAction
+                        containerColor = BlueAction,
+                        onClick = onNavigateToNewRequest
                     )
                     TramiteButton(
-                        modifier = Modifier.weight(1f).clickable { onNavigateToNewExitPermit() },
+                        modifier = Modifier.weight(1f),
                         title = "Pase de Salida",
                         subtitle = "Salida anticipada",
                         icon = Icons.AutoMirrored.Filled.ExitToApp,
-                        containerColor = GreenAction)
+                        containerColor = GreenAction,
+                        enabled = !hasTodayExitPermit,
+                        onClick = onNavigateToNewExitPermit
+                    )
+                }
+                if (hasTodayExitPermit) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Ya solicitaste un pase de salida hoy. Solo puedes pedir uno por día.",
+                        color = ErrorRed,
+                        fontSize = 13.sp
+                    )
                 }
             }
         }
@@ -386,11 +400,16 @@ fun NewRequestScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewExitPermitScreen(
+    hasTodayExitPermit: Boolean,
+    isSubmitting: Boolean,
+    submitError: String,
+    onSubmit: (String, Boolean, String, () -> Unit) -> Unit,
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
     val currentDate = remember { formatTeacherDisplayDate(LocalDate.now()) }
     var selectedTime by remember { mutableStateOf("") }
+    var selectedTimeValue by remember { mutableStateOf("") }
     var motive by remember { mutableStateOf("") }
 
     // Estados para "Regresa el mismo día"
@@ -406,7 +425,9 @@ fun NewExitPermitScreen(
     // Validación de formulario
     val isFormValid = selectedTime.isNotEmpty() &&
             selectday.isNotEmpty() &&
-            motive.trim().length >= 100
+            motive.trim().length >= 100 &&
+            !hasTodayExitPermit &&
+            !isSubmitting
 
     Scaffold(
         topBar = {
@@ -527,7 +548,15 @@ fun NewExitPermitScreen(
                     Text("Cancelar")
                 }
                 Button(
-                    onClick = { showSuccessDialog = true },
+                    onClick = {
+                        onSubmit(
+                            selectedTimeValue,
+                            selectday == "Sí",
+                            motive.trim()
+                        ) {
+                            showSuccessDialog = true
+                        }
+                    },
                     enabled = isFormValid,
                     modifier = Modifier.weight(1f).height(45.dp),
                     shape = RoundedCornerShape(4.dp),
@@ -538,6 +567,22 @@ fun NewExitPermitScreen(
                 ) {
                     Text("Enviar", color = Color.White)
                 }
+            }
+
+            if (hasTodayExitPermit) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Ya solicitaste un pase de salida hoy. Solo puedes pedir uno por día.",
+                    color = ErrorRed,
+                    fontSize = 13.sp
+                )
+            } else if (submitError.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = submitError,
+                    color = ErrorRed,
+                    fontSize = 13.sp
+                )
             }
         }
     }
@@ -568,6 +613,7 @@ fun NewExitPermitScreen(
                             else -> hour
                         }
                         selectedTime = String.format("%02d:%02d %s", displayHour, minute, amPm)
+                        selectedTimeValue = String.format("%02d:%02d", hour, minute)
                     }
                     showTimePicker = false
                 }) { Text("OK") }
@@ -1106,8 +1152,24 @@ fun DrawerMenuItem(icon: ImageVector, label: String, isSelected: Boolean = false
 }
 
 @Composable
-fun TramiteButton(modifier: Modifier = Modifier, title: String, subtitle: String, icon: ImageVector, containerColor: Color) {
-    Card(modifier = modifier.height(140.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = containerColor)) {
+fun TramiteButton(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    containerColor: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {}
+) {
+    Card(
+        modifier = modifier
+            .height(140.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) containerColor else DisabledGray
+        )
+    ) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
             Spacer(modifier = Modifier.weight(1f))

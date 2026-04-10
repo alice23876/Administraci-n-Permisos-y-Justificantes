@@ -55,6 +55,12 @@ class TeacherViewModel(
     private val _qrError = MutableStateFlow("")
     val qrError: StateFlow<String> = _qrError.asStateFlow()
 
+    private val _isExitPermitSubmitting = MutableStateFlow(false)
+    val isExitPermitSubmitting: StateFlow<Boolean> = _isExitPermitSubmitting.asStateFlow()
+
+    private val _exitPermitError = MutableStateFlow("")
+    val exitPermitError: StateFlow<String> = _exitPermitError.asStateFlow()
+
     private var currentSession: AuthSession? = null
 
     fun bindSession(session: AuthSession?) {
@@ -64,6 +70,8 @@ class TeacherViewModel(
             _historyData.value = emptyList()
             _historyError.value = ""
             _isHistoryLoading.value = false
+            _isExitPermitSubmitting.value = false
+            _exitPermitError.value = ""
             clearRequestDetail()
             clearQr()
             return
@@ -167,6 +175,54 @@ class TeacherViewModel(
         }
     }
 
+    fun createExitPermit(
+        horaSalida: String,
+        regresaMismoDia: Boolean,
+        motivo: String,
+        onSuccess: () -> Unit
+    ) {
+        val session = currentSession ?: return
+
+        if (hasTodayExitPermit()) {
+            _exitPermitError.value = "Ya solicitaste un pase de salida hoy"
+            return
+        }
+
+        viewModelScope.launch {
+            _isExitPermitSubmitting.value = true
+            _exitPermitError.value = ""
+            try {
+                repository.createTeacherExitPermit(
+                    correo = session.correo,
+                    horaSalida = horaSalida,
+                    regresaMismoDia = regresaMismoDia,
+                    motivo = motivo,
+                    token = session.token
+                )
+                refreshHistory()
+                onSuccess()
+            } catch (e: ApiException) {
+                _exitPermitError.value = e.message
+            } catch (_: Exception) {
+                _exitPermitError.value = "No se pudo enviar la solicitud"
+            } finally {
+                _isExitPermitSubmitting.value = false
+            }
+        }
+    }
+
+    fun clearExitPermitFeedback() {
+        _exitPermitError.value = ""
+        _isExitPermitSubmitting.value = false
+    }
+
+    fun hasTodayExitPermit(): Boolean {
+        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        return _historyData.value.any { request ->
+            request.type.contains("permiso", ignoreCase = true) && request.date == today
+        }
+    }
+
     fun logout() {
         currentSession = null
         SessionManager.clearSession()
@@ -174,6 +230,8 @@ class TeacherViewModel(
         _historyData.value = emptyList()
         _historyError.value = ""
         _isHistoryLoading.value = false
+        _isExitPermitSubmitting.value = false
+        _exitPermitError.value = ""
         clearRequestDetail()
         clearQr()
     }

@@ -1,6 +1,5 @@
 package com.example.integradora_appmovil.ui.screens
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,8 +36,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,7 +43,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
 import com.example.integradora_appmovil.repository.AdminUserRemote
 import com.example.integradora_appmovil.ui.theme.HeaderBlue
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
@@ -55,7 +51,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private const val ADMIN_STATUS_DATES_STORAGE_KEY = "superAdminStatusDates"
 private val statusDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
 private fun normalizeStatusValue(value: String): String =
@@ -64,39 +59,6 @@ private fun normalizeStatusValue(value: String): String =
 
 private fun String.normalize(): String = java.text.Normalizer.normalize(this.trim(), java.text.Normalizer.Form.NFD)
     .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
-
-private fun loadStatusDates(context: Context): Map<Long, String> {
-    val rawValue = context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
-        .getString(ADMIN_STATUS_DATES_STORAGE_KEY, null)
-        ?: return emptyMap()
-
-    val parsed = mutableMapOf<Long, String>()
-    val jsonObject = runCatching { org.json.JSONObject(rawValue) }.getOrNull() ?: return emptyMap()
-
-    val keys = jsonObject.keys()
-    while (keys.hasNext()) {
-        val key = keys.next()
-        val userId = key.toLongOrNull() ?: continue
-        val value = jsonObject.optString(key)
-        if (value.isNotBlank()) {
-            parsed[userId] = value
-        }
-    }
-
-    return parsed
-}
-
-private fun persistStatusDates(context: Context, statusDates: Map<Long, String>) {
-    val jsonObject = org.json.JSONObject()
-    statusDates.forEach { (userId, value) ->
-        jsonObject.put(userId.toString(), value)
-    }
-
-    context.getSharedPreferences("permiapp_admin", Context.MODE_PRIVATE)
-        .edit()
-        .putString(ADMIN_STATUS_DATES_STORAGE_KEY, jsonObject.toString())
-        .apply()
-}
 
 private fun formatStatusDate(value: String): String {
     if (value.isBlank()) {
@@ -113,21 +75,15 @@ fun UserStatusScreen(
     viewModel: UserStatusViewModel,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     val users = viewModel.users
     val isLoading = viewModel.isLoading
     val errorMessage = viewModel.errorMessage
-    val statusDatesByUserId = remember { mutableStateMapOf<Long, String>() }
 
     LaunchedEffect(Unit) {
-        statusDatesByUserId.clear()
-        statusDatesByUserId.putAll(loadStatusDates(context))
         viewModel.loadUsers()
     }
 
-    val panelUsers = users
-        .map { user -> user.copy(fechaEstado = statusDatesByUserId[user.id].orEmpty()) }
-        .filterNot { normalizeStatusValue(it.rol).contains("super") }
+    val panelUsers = users.filterNot { normalizeStatusValue(it.rol).contains("super") }
 
     val filteredUsers =
         if (viewModel.searchTerm.isBlank()) panelUsers
@@ -192,10 +148,7 @@ fun UserStatusScreen(
                             UserStatusListItem(
                                 user = user,
                                 onToggleStatus = { nextActive ->
-                                    viewModel.toggleUserStatus(user.id, nextActive) {
-                                        statusDatesByUserId[user.id] = Instant.now().toString()
-                                        persistStatusDates(context, statusDatesByUserId.toMap())
-                                    }
+                                    viewModel.toggleUserStatus(user.id, nextActive)
                                 }
                             )
                         }
@@ -212,10 +165,7 @@ fun UserStatusScreen(
                             UserStatusListItem(
                                 user = user,
                                 onToggleStatus = { nextActive ->
-                                    viewModel.toggleUserStatus(user.id, nextActive) {
-                                        statusDatesByUserId[user.id] = Instant.now().toString()
-                                        persistStatusDates(context, statusDatesByUserId.toMap())
-                                    }
+                                    viewModel.toggleUserStatus(user.id, nextActive)
                                 }
                             )
                         }
