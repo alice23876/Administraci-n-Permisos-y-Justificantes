@@ -112,7 +112,11 @@ fun AppNavigation() {
                 ),
                 hasTodayExitPermit = teacherHistory.any {
                     it.type.contains("permiso", ignoreCase = true) &&
-                        it.date == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                        it.requestDate == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                },
+                hasTodayJustificante = teacherHistory.any {
+                    it.type.contains("justificante", ignoreCase = true) &&
+                        it.requestDate == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
                 },
                 onLogout = {
                     teacherViewModel.logout()
@@ -143,6 +147,7 @@ fun AppNavigation() {
             val teacherUserData by teacherViewModel.userData.collectAsState()
             ProfileScreen(
                 userData = teacherUserData,
+                session = currentSession,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -207,9 +212,33 @@ fun AppNavigation() {
 
         // NUEVO JUSTIFICANTE
         composable(Routes.TEACHER_NEW_REQUEST) {
+            val context = LocalContext.current
+            val teacherHistory by teacherViewModel.historyData.collectAsState()
+            val isJustificanteSubmitting by teacherViewModel.isJustificanteSubmitting.collectAsState()
+            val justificanteError by teacherViewModel.justificanteError.collectAsState()
+            val blockedJustificanteDates = teacherHistory
+                .filter { it.type.contains("justificante", ignoreCase = true) }
+                .mapNotNull { historyItem ->
+                    val parts = historyItem.date.split("/")
+                    if (parts.size == 3) "${parts[2]}-${parts[1]}-${parts[0]}" else null
+                }
+                .toSet()
             NewRequestScreen(
+                blockedJustificanteDates = blockedJustificanteDates,
+                isSubmitting = isJustificanteSubmitting,
+                submitError = justificanteError,
+                onSubmit = { fechaIncidencia, motivo, comprobanteUri, onSuccess ->
+                    teacherViewModel.createJustificante(
+                        fechaIncidencia = fechaIncidencia,
+                        motivo = motivo,
+                        comprobanteUri = comprobanteUri,
+                        contentResolver = context.contentResolver,
+                        onSuccess = onSuccess
+                    )
+                },
                 onBack = { navController.popBackStack() },
                 onSuccess = {
+                    teacherViewModel.clearJustificanteFeedback()
                     navController.navigate(Routes.TEACHER_HISTORY) {
                         popUpTo(Routes.TEACHER_NEW_REQUEST) { inclusive = true }
                     }
@@ -225,7 +254,7 @@ fun AppNavigation() {
             NewExitPermitScreen(
                 hasTodayExitPermit = teacherHistory.any {
                     it.type.contains("permiso", ignoreCase = true) &&
-                        it.date == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                        it.requestDate == java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
                 },
                 isSubmitting = isExitPermitSubmitting,
                 submitError = exitPermitError,

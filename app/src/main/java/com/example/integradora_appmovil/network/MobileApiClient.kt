@@ -68,6 +68,33 @@ object MobileApiClient {
             JSONObject(responseBody.ifBlank { "{}" })
         }
 
+    suspend fun postMultipart(
+        path: String,
+        formFields: Map<String, String>,
+        fileFieldName: String? = null,
+        fileName: String? = null,
+        fileBytes: ByteArray? = null,
+        fileContentType: String? = null,
+        token: String? = null
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val boundary = "----PermiAppBoundary${System.currentTimeMillis()}"
+        val connection = openConnection(path, "POST", token, "multipart/form-data; boundary=$boundary")
+        writeMultipartBody(
+            connection = connection,
+            boundary = boundary,
+            formFields = formFields,
+            fileFieldName = fileFieldName,
+            fileName = fileName,
+            fileBytes = fileBytes,
+            fileContentType = fileContentType
+        )
+        val responseBody = readResponseBody(connection)
+        if (connection.responseCode !in 200..299) {
+            throw ApiException(connection.responseCode, extractErrorMessage(responseBody))
+        }
+        JSONObject(responseBody.ifBlank { "{}" })
+    }
+
     suspend fun getBinary(path: String, token: String? = null): BinaryResponse =
         withContext(Dispatchers.IO) {
             val connection = openConnection(path, "GET", token)
@@ -96,14 +123,19 @@ object MobileApiClient {
             )
         }
 
-    private fun openConnection(path: String, method: String, token: String?): HttpURLConnection {
+    private fun openConnection(
+        path: String,
+        method: String,
+        token: String?,
+        contentType: String = "application/json; charset=UTF-8"
+    ): HttpURLConnection {
         val url = URL("$BASE_URL$path")
         return (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
             readTimeout = 15000
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("Content-Type", contentType)
             token?.takeIf { it.isNotBlank() }?.let {
                 setRequestProperty("Authorization", "Bearer $it")
             }
@@ -111,6 +143,41 @@ object MobileApiClient {
             if (method != "GET") {
                 doOutput = true
             }
+        }
+    }
+
+    private fun writeMultipartBody(
+        connection: HttpURLConnection,
+        boundary: String,
+        formFields: Map<String, String>,
+        fileFieldName: String?,
+        fileName: String?,
+        fileBytes: ByteArray?,
+        fileContentType: String?
+    ) {
+        val lineBreak = "\r\n"
+
+        connection.outputStream.use { output ->
+            formFields.forEach { (name, value) ->
+                output.write("--$boundary$lineBreak".toByteArray(Charsets.UTF_8))
+                output.write("Content-Disposition: form-data; name=\"$name\"$lineBreak$lineBreak".toByteArray(Charsets.UTF_8))
+                output.write(value.toByteArray(Charsets.UTF_8))
+                output.write(lineBreak.toByteArray(Charsets.UTF_8))
+            }
+
+            if (fileFieldName != null && fileName != null && fileBytes != null) {
+                output.write("--$boundary$lineBreak".toByteArray(Charsets.UTF_8))
+                output.write(
+                    "Content-Disposition: form-data; name=\"$fileFieldName\"; filename=\"$fileName\"$lineBreak"
+                        .toByteArray(Charsets.UTF_8)
+                )
+                output.write("Content-Type: ${fileContentType ?: "application/octet-stream"}$lineBreak$lineBreak".toByteArray(Charsets.UTF_8))
+                output.write(fileBytes)
+                output.write(lineBreak.toByteArray(Charsets.UTF_8))
+            }
+
+            output.write("--$boundary--$lineBreak".toByteArray(Charsets.UTF_8))
+            output.flush()
         }
     }
 

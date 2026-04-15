@@ -75,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.integradora_appmovil.model.AuthSession
+import com.example.integradora_appmovil.model.SessionManager
 import com.example.integradora_appmovil.repository.AdminAreaRemote
 import com.example.integradora_appmovil.repository.AdminUserRemote
 import com.example.integradora_appmovil.ui.theme.ActiveGreen
@@ -171,6 +172,7 @@ fun SuperAdminScreen(
     session: AuthSession?,
     onLogout: () -> Unit
 ) {
+    val currentSession = session ?: SessionManager.currentUser
     val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var currentScreen by remember { mutableStateOf(SuperAdminNav.HOME) }
@@ -190,6 +192,7 @@ fun SuperAdminScreen(
     var newUserConfirmPassword by remember { mutableStateOf("") }
     var newUserRole by remember { mutableStateOf("") }
     var newAreaName by remember { mutableStateOf("") }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
 
     val users = viewModel.users
     val areas = viewModel.areas
@@ -290,6 +293,12 @@ fun SuperAdminScreen(
                 SuperAdminDrawerItem(Icons.Default.ToggleOn, "Estados de usuario", currentScreen == SuperAdminNav.STATUSES) {
                     currentScreen = SuperAdminNav.STATUSES
                     scope.launch { drawerState.close() }
+                }
+                if (currentSession != null && !currentSession.correo.equals("admin", ignoreCase = true)) {
+                    SuperAdminDrawerItem(Icons.Default.Lock, "Cambiar contraseña", false) {
+                        showChangePasswordDialog = true
+                        scope.launch { drawerState.close() }
+                    }
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -397,6 +406,12 @@ fun SuperAdminScreen(
             }
         }
     }
+
+    ChangePasswordDialog(
+        session = currentSession,
+        isOpen = showChangePasswordDialog,
+        onDismiss = { showChangePasswordDialog = false }
+    )
 
     selectedUser?.let { user ->
         AdminUserDetailDialog(

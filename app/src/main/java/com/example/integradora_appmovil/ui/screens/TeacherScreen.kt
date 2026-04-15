@@ -38,6 +38,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -53,6 +54,7 @@ import com.example.integradora_appmovil.ui.theme.InstitutionGreen
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.DisabledGray
 import com.example.integradora_appmovil.util.PdfFileHandler
+import com.example.integradora_appmovil.model.AuthSession
 
 
 // --- 1. MODELOS DE DATOS ---
@@ -74,6 +76,7 @@ data class RequestHistory(
     val directivo: String,
     val area: String,
     val date: String,
+    val requestDate: String,
     val status: String,
     val statusColor: Color,
     val canViewQr: Boolean
@@ -133,6 +136,9 @@ private fun fromDatePickerUtcMillis(utcTimeMillis: Long): LocalDate =
 private fun formatTeacherDisplayDate(date: LocalDate): String =
     date.format(teacherDisplayDateFormatter)
 
+private fun isTeacherQrCutoffReached(currentTime: LocalTime = LocalTime.now()): Boolean =
+    !currentTime.isBefore(LocalTime.of(21, 0))
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(showBackground = true)
 @Composable
@@ -140,6 +146,7 @@ fun TeacherScreenPreview() {
     TeacherScreen(
         userData = UserProfile(name = "Elena", status = "Activa"),
         hasTodayExitPermit = false,
+        hasTodayJustificante = false,
         onLogout = {},
         onProfileClick = {},
         onNavigateToRequests = {},
@@ -154,6 +161,7 @@ fun TeacherScreenPreview() {
 fun TeacherScreen(
     userData: UserProfile, 
     hasTodayExitPermit: Boolean = false,
+    hasTodayJustificante: Boolean = false,
     onLogout: () -> Unit,
     onProfileClick: () -> Unit,
     onNavigateToRequests: () -> Unit,
@@ -255,16 +263,7 @@ fun TeacherScreen(
                         subtitle = "Salida anticipada",
                         icon = Icons.AutoMirrored.Filled.ExitToApp,
                         containerColor = GreenAction,
-                        enabled = !hasTodayExitPermit,
                         onClick = onNavigateToNewExitPermit
-                    )
-                }
-                if (hasTodayExitPermit) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Ya solicitaste un pase de salida hoy. Solo puedes pedir uno por día.",
-                        color = ErrorRed,
-                        fontSize = 13.sp
                     )
                 }
             }
@@ -276,12 +275,17 @@ fun TeacherScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewRequestScreen(
+    blockedJustificanteDates: Set<String>,
+    isSubmitting: Boolean,
+    submitError: String,
+    onSubmit: (String, String, Uri?, () -> Unit) -> Unit,
     onBack: () -> Unit,
     onSuccess: () -> Unit
 ) {
     val allowedDates = remember { getAllowedBusinessDates() }
     val allowedDateKeys = remember(allowedDates) { allowedDates.map(LocalDate::toString).toSet() }
     var selectedDate by remember { mutableStateOf("") }
+    var selectedDateValue by remember { mutableStateOf("") }
     var motive by remember { mutableStateOf("") }
     var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -290,8 +294,14 @@ fun NewRequestScreen(
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? -> selectedPdfUri = uri }
+    val isSelectedDateBlocked = selectedDateValue.isNotEmpty() && blockedJustificanteDates.contains(selectedDateValue)
 
-    val isFormValid = selectedDate.isNotEmpty() && motive.trim().length >= 100
+    val isFormValid =
+        selectedDate.isNotEmpty() &&
+            selectedDateValue.isNotEmpty() &&
+            motive.trim().length >= 100 &&
+            !isSelectedDateBlocked &&
+            !isSubmitting
 
     Scaffold(
         topBar = {
@@ -346,12 +356,36 @@ fun NewRequestScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f).height(45.dp), shape = RoundedCornerShape(4.dp)) { Text("Cancelar") }
                 Button(
-                    onClick = { showSuccessDialog = true },
+                    onClick = {
+                        onSubmit(
+                            selectedDateValue,
+                            motive.trim(),
+                            selectedPdfUri
+                        ) {
+                            showSuccessDialog = true
+                        }
+                    },
                     enabled = isFormValid,
                     modifier = Modifier.weight(1f).height(45.dp),
                     shape = RoundedCornerShape(4.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, disabledContainerColor = DisabledGray)
                 ) { Text("Enviar", color = Color.White) }
+            }
+
+            if (isSelectedDateBlocked) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Ya solicitaste un justificante para esa fecha válida. Solo puedes pedir uno por día de incidencia.",
+                    color = ErrorRed,
+                    fontSize = 13.sp
+                )
+            } else if (submitError.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = submitError,
+                    color = ErrorRed,
+                    fontSize = 13.sp
+                )
             }
         }
     }
@@ -375,6 +409,7 @@ fun NewRequestScreen(
                         val selectedLocalDate = fromDatePickerUtcMillis(it)
                         if (selectedLocalDate.toString() in allowedDateKeys) {
                             selectedDate = formatTeacherDisplayDate(selectedLocalDate)
+                            selectedDateValue = selectedLocalDate.toString()
                         }
                     }
                     showDatePicker = false
@@ -395,6 +430,7 @@ fun NewRequestScreen(
             }
         }
     }
+
 }
 // --- 5. NUEVA PANTALLA: NUEVO PASE DE SALIDA ---
 @OptIn(ExperimentalMaterial3Api::class)
@@ -905,6 +941,8 @@ fun TeacherQrDialog(
     errorMessage: String,
     onDismiss: () -> Unit
 ) {
+    val qrCutoffReached = isTeacherQrCutoffReached()
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(12.dp),
@@ -930,6 +968,10 @@ fun TeacherQrDialog(
                         CircularProgressIndicator(color = SuccessGreen)
                     }
                     errorMessage.isNotEmpty() -> Text(errorMessage, color = ErrorRed)
+                    qrCutoffReached -> Text(
+                        "El QR deja de estar disponible después de las 09:00pm.",
+                        color = ErrorRed
+                    )
                     qrState != null -> {
                         Surface(
                             color = Color(0xFFDFF3E3),
@@ -1007,6 +1049,7 @@ private fun DetailRow(leftLabel: String, leftValue: String, rightLabel: String, 
 @Composable
 fun ProfileScreen(
     userData: UserProfile?,
+    session: AuthSession?,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -1053,6 +1096,8 @@ fun ProfileScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
                 InfoField(modifier = Modifier.fillMaxWidth(), label = "Correo electrónico:", value = userData.email)
+                Spacer(modifier = Modifier.height(24.dp))
+                ChangePasswordSection(session = session)
             }
         }
     }
@@ -1123,7 +1168,7 @@ fun HistoryItemCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Ver detalle", fontWeight = FontWeight.SemiBold)
                 }
-                if (item.canViewQr) {
+                if (item.canViewQr && !isTeacherQrCutoffReached()) {
                     Button(
                         onClick = onViewQr,
                         modifier = Modifier.width(46.dp).height(42.dp),

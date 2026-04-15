@@ -1,9 +1,11 @@
 package com.example.integradora_appmovil.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -14,6 +16,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -288,8 +294,24 @@ fun CodeStepContent(
     showResendSuccess: Boolean,
     isLoading: Boolean
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
+                },
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
             repeat(5) { index ->
                 val char = code.getOrNull(index)?.toString() ?: ""
                 Surface(
@@ -313,11 +335,16 @@ fun CodeStepContent(
             }
         }
 
-        TextField(
+        BasicTextField(
             value = code,
-            onValueChange = onCodeChange,
-            modifier = Modifier.height(0.dp).width(0.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            onValueChange = { newValue ->
+                onCodeChange(newValue.filter(Char::isDigit).take(5))
+            },
+            modifier = Modifier
+                .size(1.dp)
+                .focusRequester(focusRequester),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            cursorBrush = SolidColor(Color.Transparent)
         )
 
         Spacer(modifier = Modifier.height(40.dp))

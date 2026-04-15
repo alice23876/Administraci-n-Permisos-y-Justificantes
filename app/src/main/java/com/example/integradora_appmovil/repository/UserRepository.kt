@@ -12,6 +12,7 @@ data class TeacherRequestRemote(
     val directivo: String,
     val area: String,
     val fecha: String,
+    val fechaSolicitud: String,
     val estado: String,
     val puedeVerQr: Boolean
 )
@@ -161,8 +162,24 @@ class UserRepository {
         return response.optString("message", "Contraseña actualizada correctamente")
     }
 
+    suspend fun changeAuthenticatedPassword(
+        currentPassword: String,
+        newPassword: String,
+        confirmPassword: String,
+        token: String
+    ): String {
+        val payload = JSONObject()
+            .put("currentPassword", currentPassword)
+            .put("newPassword", newPassword)
+            .put("confirmPassword", confirmPassword)
+
+        val response = MobileApiClient.postJson("/auth/change-password", payload, token)
+        return response.optString("message", "Contraseña actualizada correctamente")
+    }
+
     suspend fun createTeacherExitPermit(
         correo: String,
+        fechaSolicitud: String,
         horaSalida: String,
         regresaMismoDia: Boolean,
         motivo: String,
@@ -170,11 +187,37 @@ class UserRepository {
     ): String {
         val payload = JSONObject()
             .put("correo", correo.trim())
+            .put("fechaSolicitud", fechaSolicitud)
             .put("horaSalida", horaSalida)
             .put("regresaMismoDia", regresaMismoDia)
             .put("motivo", motivo)
 
         val response = MobileApiClient.postJson("/solicitudes/permisos", payload, token)
+        return response.optString("message", "Solicitud enviada correctamente")
+    }
+
+    suspend fun createTeacherJustificante(
+        correo: String,
+        fechaIncidencia: String,
+        motivo: String,
+        comprobanteNombre: String?,
+        comprobanteBytes: ByteArray?,
+        token: String
+    ): String {
+        val response = MobileApiClient.postMultipart(
+            path = "/solicitudes/justificantes",
+            formFields = mapOf(
+                "correo" to correo.trim(),
+                "fechaIncidencia" to fechaIncidencia,
+                "motivo" to motivo
+            ),
+            fileFieldName = if (comprobanteBytes != null && !comprobanteNombre.isNullOrBlank()) "comprobante" else null,
+            fileName = comprobanteNombre,
+            fileBytes = comprobanteBytes,
+            fileContentType = if (comprobanteBytes != null) "application/pdf" else null,
+            token = token
+        )
+
         return response.optString("message", "Solicitud enviada correctamente")
     }
 
@@ -195,6 +238,7 @@ class UserRepository {
                         directivo = item.optString("directivo"),
                         area = item.optString("area"),
                         fecha = item.optString("fecha"),
+                        fechaSolicitud = item.optString("fechaSolicitud"),
                         estado = item.optString("estado"),
                         puedeVerQr = item.optBoolean("puedeVerQr", false)
                     )

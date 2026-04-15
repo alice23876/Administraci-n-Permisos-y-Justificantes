@@ -326,6 +326,9 @@ fun DirectorProfile(
                 Text(areaName, color = Color.Gray)
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        ChangePasswordSection(session = session)
     }
 }
 

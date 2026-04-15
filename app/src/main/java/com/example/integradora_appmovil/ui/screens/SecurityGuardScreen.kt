@@ -48,6 +48,7 @@ import com.example.integradora_appmovil.ui.theme.InstitutionGreen
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.DisabledGray
 import com.example.integradora_appmovil.viewmodel.SecurityGuardViewModel
+import com.example.integradora_appmovil.model.SessionManager
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -66,6 +67,7 @@ fun SecurityGuardScreen(
     viewModel: SecurityGuardViewModel = viewModel(),
     onLogout: () -> Unit
 ) {
+    val session = SessionManager.currentUser
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -92,6 +94,7 @@ fun SecurityGuardScreen(
             viewModel.showScanError("")
         }
     }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -115,6 +118,22 @@ fun SecurityGuardScreen(
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
+
+                if (session != null && !session.correo.equals("admin", ignoreCase = true)) {
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White) },
+                        label = { Text("Cambiar contraseña", color = Color.White) },
+                        selected = false,
+                        onClick = {
+                            showChangePasswordDialog = true
+                            scope.launch { drawerState.close() }
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            unselectedContainerColor = Color.Transparent
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 
@@ -351,6 +370,12 @@ fun SecurityGuardScreen(
         }
     }
 
+    ChangePasswordDialog(
+        session = session,
+        isOpen = showChangePasswordDialog,
+        onDismiss = { showChangePasswordDialog = false }
+    )
+
     // Diálogo de Éxito (Segunda Imagen)
     if (showSuccessDialog) {
         Dialog(onDismissRequest = { }) {
@@ -391,7 +416,7 @@ fun SecurityGuardScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = result.fechaRegistro,
+                            text = "Fecha de registro: ${result.fechaRegistro}",
                             color = Color.Gray,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 20.dp)

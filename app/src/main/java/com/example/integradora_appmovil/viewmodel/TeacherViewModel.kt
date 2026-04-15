@@ -1,6 +1,8 @@
 package com.example.integradora_appmovil.viewmodel
 
 import androidx.compose.ui.graphics.Color
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.integradora_appmovil.model.AuthSession
@@ -61,6 +63,12 @@ class TeacherViewModel(
     private val _exitPermitError = MutableStateFlow("")
     val exitPermitError: StateFlow<String> = _exitPermitError.asStateFlow()
 
+    private val _isJustificanteSubmitting = MutableStateFlow(false)
+    val isJustificanteSubmitting: StateFlow<Boolean> = _isJustificanteSubmitting.asStateFlow()
+
+    private val _justificanteError = MutableStateFlow("")
+    val justificanteError: StateFlow<String> = _justificanteError.asStateFlow()
+
     private var currentSession: AuthSession? = null
 
     fun bindSession(session: AuthSession?) {
@@ -72,6 +80,8 @@ class TeacherViewModel(
             _isHistoryLoading.value = false
             _isExitPermitSubmitting.value = false
             _exitPermitError.value = ""
+            _isJustificanteSubmitting.value = false
+            _justificanteError.value = ""
             clearRequestDetail()
             clearQr()
             return
@@ -194,6 +204,7 @@ class TeacherViewModel(
             try {
                 repository.createTeacherExitPermit(
                     correo = session.correo,
+                    fechaSolicitud = java.time.LocalDate.now().toString(),
                     horaSalida = horaSalida,
                     regresaMismoDia = regresaMismoDia,
                     motivo = motivo,
@@ -211,15 +222,83 @@ class TeacherViewModel(
         }
     }
 
+    fun createJustificante(
+        fechaIncidencia: String,
+        motivo: String,
+        comprobanteUri: Uri?,
+        contentResolver: ContentResolver,
+        onSuccess: () -> Unit
+    ) {
+        val session = currentSession ?: return
+
+        if (hasJustificanteForDate(fechaIncidencia)) {
+            _justificanteError.value = "Ya solicitaste un justificante para esa fecha"
+            return
+        }
+
+        viewModelScope.launch {
+            _isJustificanteSubmitting.value = true
+            _justificanteError.value = ""
+            try {
+                val fileBytes = comprobanteUri?.let { uri ->
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        inputStream.readBytes()
+                    }
+                }
+                val fileName = comprobanteUri?.lastPathSegment?.substringAfterLast('/')
+
+                repository.createTeacherJustificante(
+                    correo = session.correo,
+                    fechaIncidencia = fechaIncidencia,
+                    motivo = motivo,
+                    comprobanteNombre = fileName,
+                    comprobanteBytes = fileBytes,
+                    token = session.token
+                )
+                refreshHistory()
+                onSuccess()
+            } catch (e: ApiException) {
+                _justificanteError.value = e.message
+            } catch (_: Exception) {
+                _justificanteError.value = "No se pudo enviar la solicitud"
+            } finally {
+                _isJustificanteSubmitting.value = false
+            }
+        }
+    }
+
     fun clearExitPermitFeedback() {
         _exitPermitError.value = ""
         _isExitPermitSubmitting.value = false
     }
 
+    fun clearJustificanteFeedback() {
+        _justificanteError.value = ""
+        _isJustificanteSubmitting.value = false
+    }
+
     fun hasTodayExitPermit(): Boolean {
         val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
         return _historyData.value.any { request ->
-            request.type.contains("permiso", ignoreCase = true) && request.date == today
+            request.type.contains("permiso", ignoreCase = true) && request.requestDate == today
+        }
+    }
+
+    fun hasTodayJustificante(): Boolean {
+        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        return _historyData.value.any { request ->
+            request.type.contains("justificante", ignoreCase = true) && request.requestDate == today
+        }
+    }
+
+    fun hasJustificanteForDate(fechaIncidencia: String): Boolean {
+        val normalizedDate = runCatching {
+            java.time.LocalDate.parse(fechaIncidencia)
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        }.getOrDefault(fechaIncidencia)
+
+        return _historyData.value.any { request ->
+            request.type.contains("justificante", ignoreCase = true) && request.date == normalizedDate
         }
     }
 
@@ -232,6 +311,8 @@ class TeacherViewModel(
         _isHistoryLoading.value = false
         _isExitPermitSubmitting.value = false
         _exitPermitError.value = ""
+        _isJustificanteSubmitting.value = false
+        _justificanteError.value = ""
         clearRequestDetail()
         clearQr()
     }
@@ -260,6 +341,7 @@ class TeacherViewModel(
             directivo = remote.directivo,
             area = remote.area,
             date = remote.fecha,
+            requestDate = remote.fechaSolicitud,
             status = normalizedStatus.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
             statusColor = when {
                 normalizedStatus.equals("Aprobado", ignoreCase = true) -> SuccessGreen
