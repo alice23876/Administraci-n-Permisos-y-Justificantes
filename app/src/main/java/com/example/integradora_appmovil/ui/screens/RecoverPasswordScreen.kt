@@ -11,6 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,12 +25,14 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.integradora_appmovil.viewmodel.RecoverPasswordViewModel
+import kotlinx.coroutines.delay
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +70,13 @@ fun RecoverPasswordScreen(
     val showPasswordComplexityError = viewModel.showPasswordComplexityError
     val isLoading = viewModel.isLoading
     val errorMessage = viewModel.errorMessage
+
+    LaunchedEffect(currentStep) {
+        if (currentStep == 4) {
+            delay(3000)
+            onFinish()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -129,7 +140,7 @@ fun RecoverPasswordScreen(
                 1 -> "Ingresa tu correo y te enviaremos un código de verificación."
                 2 -> "Enviamos un código a ${if(email.isNotEmpty()) email else "ejemplo@inst.edu.mx"}"
                 3 -> "Enviamos un código a ${if(email.isNotEmpty()) email else "ejemplo@inst.edu.mx"}"
-                else -> "Tu contraseña fue cambiada correctamente.\nYa puedes iniciar sesión con tus nuevas credenciales."
+                else -> "Tu contraseña fue cambiada correctamente.\nSerás redirigido a la página principal. Si no sucede, toca el botón para hacerlo manualmente."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = Color.LightGray.copy(alpha = 0.7f),
@@ -401,6 +412,9 @@ fun PasswordStepContent(
     onFinish: () -> Unit,
     isLoading: Boolean
 ) {
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
+
     Column {
         Text("Nueva contraseña", color = Color.White, style = MaterialTheme.typography.bodyLarge)
         OutlinedTextField(
@@ -409,7 +423,17 @@ fun PasswordStepContent(
             placeholder = { Text("Mínimo 8 caracteres", color = Color.Gray) },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = RoundedCornerShape(8.dp),
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = if (newPassword.isNotEmpty()) {
+                {
+                    val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                    val description = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
+
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                    }
+                }
+            } else null,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
@@ -438,7 +462,17 @@ fun PasswordStepContent(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = RoundedCornerShape(8.dp),
             isError = showMatchError,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = if (confirmPassword.isNotEmpty()) {
+                {
+                    val image = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                    val description = if (confirmPasswordVisible) "Ocultar contraseña" else "Mostrar contraseña"
+
+                    IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                        Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                    }
+                }
+            } else null,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,

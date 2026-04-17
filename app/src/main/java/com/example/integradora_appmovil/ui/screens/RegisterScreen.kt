@@ -128,7 +128,7 @@ fun RegisterScreen(
                 Text("Nombre completo", color = Color.White, fontSize = 14.sp)
                 OutlinedTextField(
                     value = fullName,
-                    onValueChange = { viewModel.fullName = it },
+                    onValueChange = { viewModel.fullName = it.replace(Regex("[^A-Za-zÁÉÍÓÚáéíóúÑñÜü\\s]"), "") },
                     placeholder = { Text("Ingresa tu nombre y apellidos", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     shape = RoundedCornerShape(8.dp),
@@ -171,14 +171,16 @@ fun RegisterScreen(
                     isError = showPasswordError,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                        val description = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
+                    trailingIcon = if (password.isNotEmpty()) {
+                        {
+                            val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            val description = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
 
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                            }
                         }
-                    },
+                    } else null,
                     colors = textFieldCustomColors()
                 )
                 if (showPasswordError) {
@@ -200,14 +202,16 @@ fun RegisterScreen(
                     isError = showMatchError,
                     visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        val image = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                        val description = if (confirmPasswordVisible) "Ocultar contraseña" else "Mostrar contraseña"
+                    trailingIcon = if (confirmPassword.isNotEmpty()) {
+                        {
+                            val image = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            val description = if (confirmPasswordVisible) "Ocultar contraseña" else "Mostrar contraseña"
 
-                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                            Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                            IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                                Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                            }
                         }
-                    },
+                    } else null,
                     colors = textFieldCustomColors()
                 )
                 if (showMatchError) {

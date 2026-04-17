@@ -148,7 +148,14 @@ fun AppNavigation() {
             ProfileScreen(
                 userData = teacherUserData,
                 session = currentSession,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    teacherViewModel.logout()
+                    loginViewModel.resetForm()
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.TEACHER_HOME) { inclusive = true }
+                    }
+                }
             )
         }
 

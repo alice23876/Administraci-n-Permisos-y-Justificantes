@@ -1,6 +1,5 @@
 package com.example.integradora_appmovil.viewmodel
 
-import android.util.Patterns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,6 +13,10 @@ import kotlinx.coroutines.launch
 class RecoverPasswordViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
+
+    companion object {
+        private const val ALLOWED_SPECIAL_CHARACTERS = "@#$%&*.,:;!?¡¿+-=/<>[](){}_~|^\\"
+    }
 
     var currentStep by mutableStateOf(1)
         private set
@@ -43,7 +46,9 @@ class RecoverPasswordViewModel(
         private set
 
     val isEmailValid: Boolean
-        get() = Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+        get() = email.trim().matches(
+            Regex("^[a-zA-Z0-9]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$")
+        )
 
     val showEmailError: Boolean
         get() = email.isNotEmpty() && !isEmailValid
@@ -55,7 +60,7 @@ class RecoverPasswordViewModel(
         get() {
             val hasUppercase = newPassword.any { it.isUpperCase() }
             val hasNumber = newPassword.any { it.isDigit() }
-            val hasSymbol = newPassword.any { !it.isLetterOrDigit() && it in "$@#" }
+            val hasSymbol = newPassword.any { ALLOWED_SPECIAL_CHARACTERS.contains(it) }
             return newPassword.length >= 8 && hasUppercase && hasNumber && hasSymbol
         }
 

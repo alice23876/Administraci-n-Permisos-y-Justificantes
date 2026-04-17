@@ -13,6 +13,10 @@ class RegisterViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
 
+    companion object {
+        private const val ALLOWED_SPECIAL_CHARACTERS = "@#$%&*.,:;!?¡¿+-=/<>[](){}_~|^\\"
+    }
+
     // Estados
     var fullName by mutableStateOf("")
     var email by mutableStateOf("")
@@ -30,7 +34,7 @@ class RegisterViewModel(
     // Solo debe de acpetar con terminacion @utez.edu.mx
     val isEmailValid: Boolean
         get() = email.trim().lowercase().matches(
-            Regex("^[^\\s@]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$")
+            Regex("^[a-zA-Z0-9]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$")
         )
 
     val showEmailError: Boolean
@@ -41,7 +45,7 @@ class RegisterViewModel(
         get() {
             val hasUppercase = password.any { it.isUpperCase() }
             val hasNumber = password.any { it.isDigit() }
-            val hasSymbol = password.any { !it.isLetterOrDigit() }
+            val hasSymbol = password.any { ALLOWED_SPECIAL_CHARACTERS.contains(it) }
             return password.length >= 8 && hasUppercase && hasNumber && hasSymbol
         }
 

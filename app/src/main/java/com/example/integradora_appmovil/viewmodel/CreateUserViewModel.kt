@@ -15,6 +15,10 @@ class CreateUserViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
 
+    companion object {
+        private const val ALLOWED_SPECIAL_CHARACTERS = "@#$%&*.,:;!?¡¿+-=/<>[](){}_~|^\\"
+    }
+
     var nombreCompleto by mutableStateOf("")
     var correo by mutableStateOf("")
     var password by mutableStateOf("")
@@ -72,10 +76,25 @@ class CreateUserViewModel(
             errorMessage = "Todos los campos son obligatorios"
             return false
         }
+        if (!correo.trim().matches(Regex("^[a-zA-Z0-9]+@(?:[a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+\\.edu\\.mx$"))) {
+            errorMessage = "Ingresa un correo válido (.edu.mx)"
+            return false
+        }
+        if (!isPasswordComplex(password)) {
+            errorMessage = "La contraseña debe incluir mayúsculas, números y símbolos ($@#)"
+            return false
+        }
         if (password != confirmPassword) {
             errorMessage = "Las contraseñas no coinciden"
             return false
         }
         return true
+    }
+
+    private fun isPasswordComplex(value: String): Boolean {
+        val hasUppercase = value.any { it.isUpperCase() }
+        val hasNumber = value.any { it.isDigit() }
+        val hasSymbol = value.any { ALLOWED_SPECIAL_CHARACTERS.contains(it) }
+        return value.length >= 8 && hasUppercase && hasNumber && hasSymbol
     }
 }

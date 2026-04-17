@@ -1,5 +1,6 @@
 package com.example.integradora_appmovil.ui.screens
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -7,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -34,21 +37,25 @@ import com.example.integradora_appmovil.repository.UserRepository
 import com.example.integradora_appmovil.ui.theme.ErrorRed
 import com.example.integradora_appmovil.ui.theme.SuccessGreen
 import com.example.integradora_appmovil.ui.theme.WelcomeCardBG
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private fun canChangePassword(session: AuthSession?): Boolean =
     !session?.correo.equals("admin", ignoreCase = true)
 
+private const val ALLOWED_SPECIAL_CHARACTERS = "@#$%&*.,:;!?¡¿+-=/<>[](){}_~|^\\"
+
 private fun isValidChangePassword(value: String): Boolean =
     value.length >= 8 &&
         value.any(Char::isUpperCase) &&
         value.any(Char::isDigit) &&
-        value.any { it == '$' || it == '@' || it == '#' }
+        value.any { ALLOWED_SPECIAL_CHARACTERS.contains(it) }
 
 @Composable
 fun ChangePasswordSection(
     session: AuthSession?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPasswordChanged: () -> Unit = {}
 ) {
     if (!canChangePassword(session)) {
         return
@@ -79,7 +86,8 @@ fun ChangePasswordSection(
     ChangePasswordDialog(
         session = session,
         isOpen = showDialog,
-        onDismiss = { showDialog = false }
+        onDismiss = { showDialog = false },
+        onPasswordChanged = onPasswordChanged
     )
 }
 
@@ -87,7 +95,8 @@ fun ChangePasswordSection(
 fun ChangePasswordDialog(
     session: AuthSession?,
     isOpen: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPasswordChanged: () -> Unit = {}
 ) {
     if (!isOpen || !canChangePassword(session) || session == null) {
         return
@@ -101,9 +110,11 @@ fun ChangePasswordDialog(
     var isSaving by remember(isOpen) { mutableStateOf(false) }
     var errorMessage by remember(isOpen) { mutableStateOf("") }
     var successMessage by remember(isOpen) { mutableStateOf("") }
+    val showSamePasswordError = currentPassword.isNotBlank() && newPassword.isNotBlank() && currentPassword == newPassword
 
     val canSave = currentPassword.isNotBlank() &&
         isValidChangePassword(newPassword) &&
+        !showSamePasswordError &&
         confirmPassword == newPassword &&
         confirmPassword.isNotBlank()
 
@@ -141,6 +152,21 @@ fun ChangePasswordDialog(
                     color = Color.Gray,
                     fontSize = 12.sp
                 )
+                if (showSamePasswordError) {
+                    Row {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = ErrorRed,
+                            modifier = Modifier.padding(top = 1.dp)
+                        )
+                        Text(
+                            " La nueva contraseña no puede ser igual a la actual",
+                            color = ErrorRed,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = {
@@ -173,16 +199,19 @@ fun ChangePasswordDialog(
                         errorMessage = ""
                         successMessage = ""
                         try {
-                            val message = repository.changeAuthenticatedPassword(
+                            repository.changeAuthenticatedPassword(
                                 currentPassword = currentPassword,
                                 newPassword = newPassword,
                                 confirmPassword = confirmPassword,
                                 token = session.token
                             )
-                            successMessage = message
+                            successMessage = "Contraseña actualizada. Por seguridad, vuelve a iniciar sesión."
                             currentPassword = ""
                             newPassword = ""
                             confirmPassword = ""
+                            delay(1400)
+                            onDismiss()
+                            onPasswordChanged()
                         } catch (exception: ApiException) {
                             errorMessage = exception.message ?: "No se pudo actualizar la contraseña"
                         } catch (_: Exception) {

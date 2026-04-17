@@ -1050,7 +1050,8 @@ private fun DetailRow(leftLabel: String, leftValue: String, rightLabel: String, 
 fun ProfileScreen(
     userData: UserProfile?,
     session: AuthSession?,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLogout: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -1097,7 +1098,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 InfoField(modifier = Modifier.fillMaxWidth(), label = "Correo electrónico:", value = userData.email)
                 Spacer(modifier = Modifier.height(24.dp))
-                ChangePasswordSection(session = session)
+                ChangePasswordSection(session = session, onPasswordChanged = onLogout)
             }
         }
     }

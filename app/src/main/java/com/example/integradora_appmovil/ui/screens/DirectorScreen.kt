@@ -192,7 +192,8 @@ fun DirectorScreen(
                     DirectorNav.PROFILE -> DirectorProfile(
                         session = session,
                         requests = pendingRequests + historyRequests,
-                        onBack = { currentScreen = DirectorNav.HOME }
+                        onBack = { currentScreen = DirectorNav.HOME },
+                        onLogout = onLogout
                     )
                 }
             }
@@ -296,7 +297,8 @@ fun DirectorHome(
 fun DirectorProfile(
     session: AuthSession?,
     requests: List<RequestItem>,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val displayName = session?.nombre?.ifBlank { "Director" } ?: "Director"
     val areaName = requests.firstOrNull { it.area.isNotBlank() }?.area ?: "Sin área asignada"
@@ -328,7 +330,7 @@ fun DirectorProfile(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        ChangePasswordSection(session = session)
+        ChangePasswordSection(session = session, onPasswordChanged = onLogout)
     }
 }
 

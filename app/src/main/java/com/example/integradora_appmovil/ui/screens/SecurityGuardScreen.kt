@@ -373,7 +373,8 @@ fun SecurityGuardScreen(
     ChangePasswordDialog(
         session = session,
         isOpen = showChangePasswordDialog,
-        onDismiss = { showChangePasswordDialog = false }
+        onDismiss = { showChangePasswordDialog = false },
+        onPasswordChanged = onLogout
     )
 
     // Diálogo de Éxito (Segunda Imagen)
